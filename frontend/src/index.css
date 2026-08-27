@@ -101,6 +101,15 @@ h3 {
   padding: 0 1.5rem 4rem;
 }
 
+.app-shell-sidebar {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
 header {
   position: sticky;
   top: 0;
@@ -114,6 +123,302 @@ header {
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--border);
+}
+
+.app-shell-sidebar header {
+  margin: 0;
+}
+
+.app-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.app-body main {
+  flex: 1;
+  min-width: 0;
+  padding: 1.75rem 2rem 4rem;
+  max-width: 1400px;
+}
+
+/* ---------- Sidebar ---------- */
+
+.sidebar {
+  width: 228px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  padding: 1.25rem 0.75rem;
+  overflow-y: auto;
+}
+
+.sidebar-section {
+  margin-bottom: 1.5rem;
+}
+
+.sidebar-section-title {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  padding: 0 0.6rem;
+  margin-bottom: 0.5rem;
+}
+
+.sidebar-item {
+  width: 100%;
+  justify-content: flex-start;
+  background: transparent;
+  color: var(--text-secondary);
+  font-weight: 500;
+  padding: 0.55rem 0.6rem;
+  border-radius: var(--radius-sm);
+  margin-bottom: 0.15rem;
+}
+
+.sidebar-item:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--text);
+  transform: none;
+  box-shadow: none;
+}
+
+.sidebar-item.active {
+  background: var(--accent-muted);
+  color: var(--accent-hover);
+}
+
+.sidebar-item-muted {
+  color: var(--text-muted);
+}
+
+.sidebar-badge {
+  margin-left: auto;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  background: var(--surface-3);
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--radius-pill);
+}
+
+/* ---------- Dashboard ---------- */
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.85rem;
+  margin-bottom: 1.5rem;
+}
+
+.stat-tile {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 1.1rem 1.25rem;
+}
+
+.stat-tile-label {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+}
+
+.stat-tile-value {
+  font-size: 1.7rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.stat-tile-trend {
+  font-size: 0.74rem;
+  font-weight: 600;
+  margin-top: 0.35rem;
+}
+
+.stat-tile-trend.up {
+  color: var(--high);
+}
+
+.stat-tile-trend.down {
+  color: var(--danger);
+}
+
+.stat-tile-trend.muted {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.dashboard-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.dashboard-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 1.25rem;
+}
+
+.dashboard-actor-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.dashboard-actor-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.15rem;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.dashboard-actor-list li:hover {
+  background: var(--surface-2);
+}
+
+.dashboard-actor-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.persona-link-pair {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.persona-link-pair svg {
+  color: var(--accent);
+}
+
+.persona-link-confidence {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--accent-hover);
+  margin: 0.5rem 0 1rem;
+}
+
+.signal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.signal-row {
+  display: grid;
+  grid-template-columns: 1fr 90px 34px;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.signal-label {
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signal-bar {
+  height: 6px;
+  background: var(--surface-3);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.signal-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-hover));
+  border-radius: var(--radius-pill);
+}
+
+.signal-value {
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-align: right;
+}
+
+.source-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.source-bar-row {
+  display: grid;
+  grid-template-columns: 130px 1fr 28px;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.source-bar-label {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-bar-track {
+  height: 8px;
+  background: var(--surface-3);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.source-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--type-wallet), var(--type-username));
+  border-radius: var(--radius-pill);
+}
+
+.source-bar-count {
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-align: right;
+}
+
+.timeline-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.timeline-list li {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  font-size: 0.85rem;
+}
+
+.timeline-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-top: 0.35rem;
+  flex-shrink: 0;
+  box-shadow: 0 0 6px var(--accent);
 }
 
 .brand {
@@ -174,14 +479,14 @@ button {
 }
 
 button.btn-primary,
-button:not([class*="btn-"]):not(.link-button) {
+button:not([class*="btn-"]):not(.link-button):not(.sidebar-item) {
   background: linear-gradient(180deg, var(--accent-hover), var(--accent-strong));
   color: #0a0b14;
   box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 
 button.btn-primary:hover:not(:disabled),
-button:not([class*="btn-"]):not(.link-button):hover:not(:disabled) {
+button:not([class*="btn-"]):not(.link-button):not(.sidebar-item):hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }

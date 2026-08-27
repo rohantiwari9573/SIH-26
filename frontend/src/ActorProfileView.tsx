@@ -8,6 +8,7 @@ import {
   ArrowLeftIcon,
   DownloadIcon,
   KeyIcon,
+  LinkIcon,
   LoaderIcon,
   NetworkIcon,
   PenIcon,
@@ -15,6 +16,12 @@ import {
   UserIcon,
   WalletIcon,
 } from "./icons";
+
+const EDGE_TYPE_LABELS: Record<string, string> = {
+  shared_wallet: "Shared wallet address",
+  shared_pgp_key: "Shared PGP key",
+  stylometry: "Stylometric similarity",
+};
 
 const TYPE_ICON: Record<string, JSX.Element> = {
   username: <UserIcon width={13} height={13} />,
@@ -196,6 +203,46 @@ export default function ActorProfileView({
             <h3>Relationship graph</h3>
           </div>
           <GraphView actorId={actorId} />
+        </div>
+      </section>
+
+      <section>
+        <div className="section-card">
+          <div className="section-heading">
+            <LinkIcon width={16} height={16} />
+            <h3>Attribution evidence</h3>
+            <span className="section-count">{profile.attribution_edges.length}</span>
+          </div>
+          {profile.attribution_edges.length === 0 ? (
+            <p className="muted">
+              Single-persona actor — no linking evidence to another persona was found.
+            </p>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Persona A</th>
+                  <th>Persona B</th>
+                  <th>Evidence</th>
+                  <th>Strength</th>
+                </tr>
+              </thead>
+              <tbody>
+                {profile.attribution_edges.map((edge) => (
+                  <tr key={edge.id}>
+                    <td>
+                      {edge.username_a} <span className="muted">({edge.platform_a})</span>
+                    </td>
+                    <td>
+                      {edge.username_b} <span className="muted">({edge.platform_b})</span>
+                    </td>
+                    <td>{EDGE_TYPE_LABELS[edge.edge_type] ?? edge.edge_type}</td>
+                    <td>{(edge.weight * 100).toFixed(0)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </section>
 

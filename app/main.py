@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from app.api.routes import actors, auth, export, health, jobs, leads
+from app.api.routes import actors, auth, dashboard, export, health, jobs, leads
 
 app = FastAPI(
     title="Argus — Threat Actor Attribution API",
@@ -14,3 +14,4 @@ app.include_router(actors.router)
 app.include_router(export.router)
 app.include_router(leads.router)
 app.include_router(jobs.router)
+app.include_router(dashboard.router)

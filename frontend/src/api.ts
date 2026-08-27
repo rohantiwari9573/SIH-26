@@ -32,6 +32,16 @@ export interface StyleProfileOut {
   sample_count: number;
 }
 
+export interface AttributionEdgeOut {
+  id: string;
+  username_a: string;
+  platform_a: string;
+  username_b: string;
+  platform_b: string;
+  edge_type: string;
+  weight: number;
+}
+
 export interface ActorProfile {
   id: string;
   label: string;
@@ -41,6 +51,7 @@ export interface ActorProfile {
   identifiers: IdentifierOut[];
   infra_findings: InfraFindingOut[];
   style_profiles: StyleProfileOut[];
+  attribution_edges: AttributionEdgeOut[];
 }
 
 class ApiError extends Error {
@@ -240,6 +251,111 @@ export async function waitForJob(
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
   throw new ApiError(408, "Analysis job did not complete in time");
+}
+
+export interface StatCard {
+  label: string;
+  value: number;
+  trend_pct: number | null;
+  sparkline: number[] | null;
+}
+
+export interface DashboardStats {
+  threat_actors: StatCard;
+  unique_handles: StatCard;
+  pgp_keys: StatCard;
+  wallets_tracked: StatCard;
+  attribution_links: StatCard;
+  high_confidence_links: StatCard;
+}
+
+export interface TimelineEvent {
+  event_type: string;
+  occurred_at: string;
+  summary: string;
+  actor_id: string | null;
+}
+
+export interface SourceBreakdownItem {
+  source_platform: string;
+  count: number;
+}
+
+export interface TopLinkSignal {
+  label: string;
+  value: number;
+  weight: number;
+}
+
+export interface TopLink {
+  actor_id: string;
+  actor_label: string;
+  confidence: number;
+  username_a: string;
+  platform_a: string;
+  username_b: string;
+  platform_b: string;
+  signals: TopLinkSignal[];
+}
+
+export interface InfraFindingRow {
+  id: string;
+  onion_address: string;
+  finding_type: string;
+  detail: Record<string, unknown>;
+  resolved_ip: string | null;
+  discovered_at: string;
+  actor_id: string | null;
+  actor_label: string | null;
+}
+
+export interface TorRelay {
+  fingerprint: string;
+  nickname: string;
+  ip_addresses: string[];
+  country: string | null;
+  running: boolean;
+  flags: string[];
+  first_seen: string | null;
+  last_seen: string | null;
+}
+
+export interface ThreatEvent {
+  source: string;
+  event_uuid: string;
+  org_name: string | null;
+  info: string;
+  tags: string[];
+  event_date: string | null;
+  threat_level_id: number | null;
+}
+
+export async function getDashboardStats(): Promise<DashboardStats> {
+  return request<DashboardStats>("/api/dashboard/stats");
+}
+
+export async function getDashboardTimeline(limit = 20): Promise<TimelineEvent[]> {
+  return request<TimelineEvent[]>(`/api/dashboard/timeline?limit=${limit}`);
+}
+
+export async function getSourceBreakdown(): Promise<SourceBreakdownItem[]> {
+  return request<SourceBreakdownItem[]>("/api/dashboard/sources");
+}
+
+export async function getTopLink(): Promise<TopLink | null> {
+  return request<TopLink | null>("/api/dashboard/top-link");
+}
+
+export async function getInfraFindingsGlobal(limit = 20): Promise<InfraFindingRow[]> {
+  return request<InfraFindingRow[]>(`/api/dashboard/infra-findings?limit=${limit}`);
+}
+
+export async function getTorRelays(limit = 50): Promise<TorRelay[]> {
+  return request<TorRelay[]>(`/api/dashboard/tor-relays?limit=${limit}`);
+}
+
+export async function getThreatEvents(limit = 50): Promise<ThreatEvent[]> {
+  return request<ThreatEvent[]>(`/api/dashboard/threat-events?limit=${limit}`);
 }
 
 export { ApiError };

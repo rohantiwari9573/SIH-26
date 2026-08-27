@@ -45,6 +45,7 @@ def get_actor_profile(actor_id: uuid.UUID, db: Session = Depends(get_db)):
             selectinload(Actor.identifiers),
             selectinload(Actor.infra_findings),
             selectinload(Actor.style_profiles),
+            selectinload(Actor.attribution_edges),
         )
         .filter(Actor.id == actor_id)
         .first()

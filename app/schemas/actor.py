@@ -35,6 +35,21 @@ class StyleProfileOut(BaseModel):
     sample_count: int
 
 
+class AttributionEdgeOut(BaseModel):
+    """One piece of evidence the attribution pipeline used to merge two
+    personas into this actor — the 'why' behind the confidence score."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    username_a: str
+    platform_a: str
+    username_b: str
+    platform_b: str
+    edge_type: str
+    weight: float
+
+
 class ActorProfileOut(BaseModel):
     """The single unified view the PS asks for: identifiers + infra + confidence, together."""
 
@@ -48,6 +63,7 @@ class ActorProfileOut(BaseModel):
     identifiers: list[IdentifierOut] = []
     infra_findings: list[InfraFindingOut] = []
     style_profiles: list[StyleProfileOut] = []
+    attribution_edges: list[AttributionEdgeOut] = []
 
 
 class GraphNode(BaseModel):

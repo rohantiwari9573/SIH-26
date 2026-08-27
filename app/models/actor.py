@@ -30,6 +30,7 @@ class Actor(Base):
     identifiers: Mapped[list["Identifier"]] = relationship(back_populates="actor")
     infra_findings: Mapped[list["InfraFinding"]] = relationship(back_populates="actor")
     style_profiles: Mapped[list["StyleProfile"]] = relationship(back_populates="actor")
+    attribution_edges: Mapped[list["AttributionEdge"]] = relationship()
 
 
 class Identifier(Base):
@@ -91,6 +92,28 @@ class StyleProfile(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     actor: Mapped[Actor | None] = relationship(back_populates="style_profiles")
+
+
+class AttributionEdge(Base):
+    """One piece of evidence the attribution pipeline used to merge two
+    personas into the same Actor cluster (see app.services.attribution) —
+    persisted so the UI can show *why* an attribution was made, not just the
+    final confidence score. Rebuilt from scratch alongside Actor on every
+    run_full_analysis (see app/services/pipeline.py)."""
+
+    __tablename__ = "attribution_edges"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    actor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("actors.id"))
+    username_a: Mapped[str] = mapped_column(String(255))
+    platform_a: Mapped[str] = mapped_column(String(255))
+    username_b: Mapped[str] = mapped_column(String(255))
+    platform_b: Mapped[str] = mapped_column(String(255))
+    edge_type: Mapped[str] = mapped_column(String(32))  # shared_wallet | shared_pgp_key | stylometry
+    weight: Mapped[float] = mapped_column(Float)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
 class RawPersona(Base):

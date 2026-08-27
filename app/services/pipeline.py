@@ -15,7 +15,14 @@ to get that right without hand-rolling incremental-clustering logic that a
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.models.actor import Actor, Identifier, InfraFinding, RawPersona, StyleProfile
+from app.models.actor import (
+    Actor,
+    AttributionEdge,
+    Identifier,
+    InfraFinding,
+    RawPersona,
+    StyleProfile,
+)
 from app.services.attribution import build_clusters
 from app.services.graph.neo4j_client import get_neo4j_client
 from app.services.graph.relationship_mapper import ingest_marketplace_record
@@ -105,6 +112,7 @@ def run_full_analysis(
     # Derived tables are rebuilt from scratch each run — see module docstring.
     db.query(StyleProfile).delete()
     db.query(InfraFinding).delete()
+    db.query(AttributionEdge).delete()
     db.query(Identifier).delete()
     db.query(Actor).delete()
     db.flush()
@@ -165,6 +173,19 @@ def run_full_analysis(
                         detail={"note": "matched via mock_leaky_service scan"},
                     )
                 )
+
+        for username_a, platform_a, username_b, platform_b, edge_type, weight in cluster.edges:
+            db.add(
+                AttributionEdge(
+                    actor_id=actor.id,
+                    username_a=username_a,
+                    platform_a=platform_a,
+                    username_b=username_b,
+                    platform_b=platform_b,
+                    edge_type=edge_type,
+                    weight=weight,
+                )
+            )
 
         persisted_actors.append(actor)
 

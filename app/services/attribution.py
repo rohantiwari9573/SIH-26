@@ -35,7 +35,10 @@ class AttributionCluster:
     relationship_strength: float
     infra_match: bool
     confidence: float
-    edges: list[tuple[str, str, str, float]] = field(default_factory=list)
+    # (username_a, platform_a, username_b, platform_b, edge_type, weight) — full
+    # persona keys on both sides so a caller can tell apart two same-named
+    # personas on different platforms; see PersonaKey note in the module docstring.
+    edges: list[tuple[str, str, str, str, str, float]] = field(default_factory=list)
 
     @property
     def usernames(self) -> set[str]:
@@ -175,10 +178,12 @@ def build_clusters(
     clusters: list[AttributionCluster] = []
     for members in groups.values():
         member_edges_raw = [e for e in edges if e[0] in members and e[1] in members]
-        member_edges = [(a[0], b[0], t, w) for a, b, t, w in member_edges_raw]
+        member_edges = [
+            (a[0], a[1], b[0], b[1], t, w) for a, b, t, w in member_edges_raw
+        ]
 
-        style_scores = [e[3] for e in member_edges if e[2] == "stylometry"]
-        has_shared_id = any(e[2].startswith("shared_") for e in member_edges)
+        style_scores = [e[5] for e in member_edges if e[4] == "stylometry"]
+        has_shared_id = any(e[4].startswith("shared_") for e in member_edges)
         infra_match = bool(members & infra_leaked_persona_keys)
 
         confidence = compute_confidence(
