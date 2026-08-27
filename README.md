@@ -27,6 +27,9 @@ and data flow.
 - **Relational store**: PostgreSQL (SQLAlchemy + Alembic migrations)
 - **Graph store**: Neo4j
 - **Job queue**: Celery + Redis (analysis jobs run async, not inline on the request)
+- **Frontend**: React + TypeScript (Vite dev server for development, static
+  build behind nginx for production — see `docker-compose.yml`'s `frontend`
+  vs. `frontend-prod` services)
 - **Auth**: JWT
 - **Tests**: pytest
 - **CI**: GitHub Actions (lint + test on every push)
@@ -41,6 +44,18 @@ docker compose up --build
 - Dashboard: http://localhost:5173
 - API: http://localhost:8000/docs
 - Neo4j browser: http://localhost:7474
+
+For a production-style static build (nginx-served, no Vite dev server, no
+source volume-mounted) instead of the hot-reload dev frontend:
+
+```bash
+docker compose --profile prod up --build frontend-prod
+```
+
+Dashboard then at http://localhost:5174 — separate port from the dev server
+on 5173, so both can run side by side. Not started by plain `docker compose
+up`; opt in with `--profile prod` when you want it (e.g. for the actual demo,
+where showing Vite's dev tooling in devtools looks less finished).
 
 Generate and run the initial migration (first time only):
 

@@ -12,6 +12,16 @@ class Neo4jClient:
     def close(self):
         self._driver.close()
 
+    def clear_all(self) -> None:
+        """Wipes every Identifier node and relationship. Used by
+        run_full_analysis before re-pushing the current RawPersona set, so
+        Neo4j stays in sync with the "derive Postgres tables from scratch on
+        every run" model the rest of the pipeline uses — without this, a
+        persona removed from RawPersona would keep showing up in relationship
+        graphs indefinitely, since MERGE only ever adds/updates, never removes."""
+        with self._driver.session() as session:
+            session.run("MATCH (n:Identifier) DETACH DELETE n")
+
     def upsert_identifier(self, identifier_type: str, value: str, source_platform: str):
         query = """
         MERGE (n:Identifier {type: $identifier_type, value: $value})

@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.models.actor import Actor, Identifier, InfraFinding, RawPersona, StyleProfile
 from app.services.attribution import build_clusters
+from app.services.graph.neo4j_client import get_neo4j_client
 from app.services.graph.relationship_mapper import ingest_marketplace_record
 from app.services.stylometry.features import extract_features
 
@@ -36,7 +37,10 @@ def run_full_analysis(db: Session) -> list[Actor]:
     raw_personas = db.query(RawPersona).all()
     personas = [_persona_dict(p) for p in raw_personas]
 
-    # Idempotent MERGE writes — safe to re-push the whole set every run.
+    # Cleared first, then fully re-pushed below — Neo4j MERGE only ever
+    # adds/updates, so without this a persona removed from RawPersona would
+    # keep showing up in relationship graphs indefinitely.
+    get_neo4j_client().clear_all()
     for persona in personas:
         ingest_marketplace_record(
             {

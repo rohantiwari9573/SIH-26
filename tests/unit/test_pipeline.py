@@ -17,8 +17,23 @@ def _session(tmp_path):
     return sessionmaker(bind=engine)()
 
 
-def test_run_full_analysis_derives_clusters_from_raw_personas(tmp_path, monkeypatch):
+class _FakeNeo4jClient:
+    def __init__(self):
+        self.cleared = False
+
+    def clear_all(self):
+        self.cleared = True
+
+
+def _mock_neo4j(monkeypatch) -> _FakeNeo4jClient:
     monkeypatch.setattr(pipeline, "ingest_marketplace_record", lambda record: None)
+    fake_client = _FakeNeo4jClient()
+    monkeypatch.setattr(pipeline, "get_neo4j_client", lambda: fake_client)
+    return fake_client
+
+
+def test_run_full_analysis_derives_clusters_from_raw_personas(tmp_path, monkeypatch):
+    fake_neo4j = _mock_neo4j(monkeypatch)
     db = _session(tmp_path)
 
     shared_text_a = (
@@ -66,11 +81,13 @@ def test_run_full_analysis_derives_clusters_from_raw_personas(tmp_path, monkeypa
     solo = next(a for a in actors if a.label == "Actor: solo_vendor")
     assert solo.confidence_score == 0.0
 
+    assert fake_neo4j.cleared, "run_full_analysis must clear stale Neo4j data before re-pushing"
+
 
 def test_run_full_analysis_is_idempotent_on_rerun(tmp_path, monkeypatch):
     """Re-running against the same RawPersona set shouldn't accumulate
     duplicate Actor/Identifier rows — derived tables are rebuilt, not appended."""
-    monkeypatch.setattr(pipeline, "ingest_marketplace_record", lambda record: None)
+    _mock_neo4j(monkeypatch)
     db = _session(tmp_path)
 
     db.add(RawPersona(username="only_vendor", platform="platform_1"))

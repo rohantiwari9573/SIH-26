@@ -58,7 +58,9 @@ services:
       - "8443:443"
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      target: development
     environment:
       VITE_API_PROXY_TARGET: http://api:8000
     volumes:
@@ -68,6 +70,22 @@ services:
       - "5173:5173"
     depends_on:
       - api
+
+  # Static production build served by nginx — not started by `docker compose
+  # up` by default (profile "prod"). Run explicitly:
+  #   docker compose --profile prod up --build frontend-prod
+  # Dashboard then at http://localhost:5174 (separate port from the dev
+  # server on 5173, so both can run side by side without colliding).
+  frontend-prod:
+    build:
+      context: ./frontend
+      target: production
+    ports:
+      - "5174:80"
+    depends_on:
+      - api
+    profiles:
+      - prod
 
   worker:
     build: .
