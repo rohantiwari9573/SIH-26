@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ActorGraph, ApiError, getActorGraph } from "./api";
 import { computeLayout } from "./forceLayout";
 import { AlertIcon, KeyIcon, UserIcon, WalletIcon } from "./icons";
+import { SkeletonBlock } from "./Skeleton";
 
 const WIDTH = 640;
 
@@ -69,7 +70,7 @@ export default function GraphView({ actorId }: { actorId: string }) {
   if (!graph) {
     return (
       <div style={{ padding: "0 1.5rem 1.5rem" }}>
-        <p className="muted">Loading relationship graph...</p>
+        <SkeletonBlock height={220} />
       </div>
     );
   }

@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { ActorSearchResult, ApiError, listActors, searchActors } from "./api";
 import ConfidenceBadge from "./ConfidenceBadge";
 import { AlertIcon, InboxIcon, SearchIcon, UserIcon } from "./icons";
+import { SkeletonRows } from "./Skeleton";
 
 export default function SearchView({
   onSelectActor,
@@ -69,7 +70,7 @@ export default function SearchView({
         </p>
       )}
 
-      {loading && <p className="muted">Loading...</p>}
+      {loading && <SkeletonRows count={4} />}
 
       {!loading && !error && results.length === 0 && (
         <div className="empty-state">

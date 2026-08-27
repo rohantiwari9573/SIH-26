@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ActorProfile, ApiError, downloadExport, getActorProfile } from "./api";
 import ConfidenceBadge from "./ConfidenceBadge";
 import GraphView from "./GraphView";
+import { SkeletonBlock } from "./Skeleton";
 import {
   AlertIcon,
   ArrowLeftIcon,
@@ -67,7 +68,13 @@ export default function ActorProfileView({
   }
 
   if (!profile) {
-    return <p className="muted">Loading actor profile...</p>;
+    return (
+      <div>
+        <div className="skeleton skeleton-line" style={{ width: 160, height: 32, marginBottom: "1.5rem" }} />
+        <div className="skeleton skeleton-line" style={{ width: 280, height: 28, marginBottom: "2rem" }} />
+        <SkeletonBlock height={180} />
+      </div>
+    );
   }
 
   return (

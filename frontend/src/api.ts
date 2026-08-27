@@ -1,4 +1,4 @@
-const TOKEN_STORAGE_KEY = "sih26151_token";
+const TOKEN_STORAGE_KEY = "argus_token";
 
 export interface ActorSearchResult {
   id: string;

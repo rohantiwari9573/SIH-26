@@ -3,8 +3,8 @@ from fastapi import FastAPI
 from app.api.routes import actors, auth, export, health, jobs, leads
 
 app = FastAPI(
-    title="SIH26151 Dark Web Threat Actor De-anonymization",
-    description="NTRO problem statement 26151 prototype API",
+    title="Argus — Threat Actor Attribution API",
+    description="Dark web infrastructure, relationship, and stylometric attribution API",
     version="0.1.0",
 )
 
