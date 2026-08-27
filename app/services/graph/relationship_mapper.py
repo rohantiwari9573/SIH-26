@@ -18,17 +18,29 @@ def ingest_marketplace_record(record: dict) -> None:
 
     client.upsert_identifier("username", record["username"], record["platform"])
 
+    # platform_a scopes the username-side match — see Neo4jClient.link_identifiers.
+    # Wallet/PGP-key sides don't need it: those nodes merge by value alone.
     if record.get("pgp_key"):
         client.upsert_identifier("pgp_key", record["pgp_key"], record["platform"])
-        client.link_identifiers(record["username"], record["pgp_key"], "USES_KEY")
+        client.link_identifiers(
+            record["username"], record["pgp_key"], "USES_KEY", platform_a=record["platform"]
+        )
 
     if record.get("wallet"):
         client.upsert_identifier("wallet", record["wallet"], record["platform"])
-        client.link_identifiers(record["username"], record["wallet"], "USES_WALLET")
+        client.link_identifiers(
+            record["username"], record["wallet"], "USES_WALLET", platform_a=record["platform"]
+        )
 
     for voucher in record.get("vouched_by", []):
         client.upsert_identifier("username", voucher, record["platform"])
-        client.link_identifiers(voucher, record["username"], "VOUCHES_FOR")
+        client.link_identifiers(
+            voucher,
+            record["username"],
+            "VOUCHES_FOR",
+            platform_a=record["platform"],
+            platform_b=record["platform"],
+        )
 
 
 def find_related_identifiers(value: str, depth: int = 2) -> list[dict]:

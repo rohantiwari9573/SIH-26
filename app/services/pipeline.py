@@ -12,6 +12,7 @@ out to share a wallet), and recomputing the whole clustering is the only way
 to get that right without hand-rolling incremental-clustering logic that a
 7-day hackathon build has no business attempting.
 """
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.models.actor import Actor, Identifier, InfraFinding, RawPersona, StyleProfile
@@ -19,6 +20,9 @@ from app.services.attribution import build_clusters
 from app.services.graph.neo4j_client import get_neo4j_client
 from app.services.graph.relationship_mapper import ingest_marketplace_record
 from app.services.stylometry.features import extract_features
+
+# Arbitrary fixed key for pg_advisory_xact_lock — see run_full_analysis.
+_ANALYSIS_LOCK_KEY = 727181
 
 
 def _persona_dict(raw: RawPersona) -> dict:
@@ -45,6 +49,23 @@ def run_full_analysis(
     exercises this pillar rather than just falling back to exact-string
     wallet matching.
     """
+    if db.bind.dialect.name == "postgresql":
+        # Two POST /api/leads calls submitted close together each enqueue a
+        # reanalyze_all Celery task, and Celery's default worker concurrency
+        # runs multiple tasks in parallel processes — without this lock, one
+        # task's "DELETE FROM identifiers" can hit a live ForeignKeyViolation
+        # against rows another concurrently-running task just committed,
+        # crashing and silently discarding that submission's contribution to
+        # the analysis (reproduced live: two leads submitted back to back,
+        # one task crashed, the other "succeeded" using a stale pre-second-lead
+        # snapshot). pg_advisory_xact_lock serializes the whole read-rebuild-
+        # write cycle across concurrent transactions and auto-releases at
+        # commit/rollback, so no manual unlock is needed even on an exception.
+        # Guarded to Postgres only — SQLite (used in tests) has no such
+        # function and doesn't need it (no real concurrent-connection risk
+        # in a single-file test DB).
+        db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _ANALYSIS_LOCK_KEY})
+
     raw_personas = db.query(RawPersona).all()
     personas = [_persona_dict(p) for p in raw_personas]
 
@@ -73,7 +94,11 @@ def run_full_analysis(
         infra_leaked_usernames=infra_leaked_usernames,
         wallet_transactions=wallet_transactions,
     )
-    personas_by_username = {p["username"]: p for p in personas}
+    # Keyed by (username, platform), not bare username — RawPersona allows
+    # the same username on two different platforms as two different real
+    # personas, and a bare-username dict here would silently drop one of
+    # them (whichever lost the key collision) instead of persisting both.
+    personas_by_key = {(p["username"], p["platform"]): p for p in personas}
 
     # Derived tables are rebuilt from scratch each run — see module docstring.
     db.query(StyleProfile).delete()
@@ -89,8 +114,9 @@ def run_full_analysis(
         db.add(actor)
         db.flush()
 
-        for username in cluster.usernames:
-            persona = personas_by_username[username]
+        for persona_key in cluster.persona_keys:
+            username, _platform = persona_key
+            persona = personas_by_key[persona_key]
 
             identifier = Identifier(
                 actor_id=actor.id,

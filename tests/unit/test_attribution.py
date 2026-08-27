@@ -110,3 +110,40 @@ def test_wallet_clustering_links_personas_with_different_co_spent_addresses():
 
     unrelated = next(c for c in with_transactions if "vendor_unrelated" in c.usernames)
     assert unrelated.usernames == {"vendor_unrelated"}
+
+
+def test_same_username_different_platforms_stay_distinct_when_unlinked():
+    """The same username string on two different platforms, with nothing
+    tying them together (different wallets, no shared PGP key, no matching
+    writing style) must be treated as two separate personas — not silently
+    collapsed into one by a bare-username identity key."""
+    personas = [
+        {"username": "shadow_vendor", "platform": "platform_1", "wallet": "wallet_1"},
+        {"username": "shadow_vendor", "platform": "platform_2", "wallet": "wallet_2"},
+    ]
+
+    clusters = build_clusters(personas)
+
+    assert len(clusters) == 2
+    assert all(c.usernames == {"shadow_vendor"} for c in clusters)
+    persona_keys = {key for c in clusters for key in c.persona_keys}
+    assert persona_keys == {("shadow_vendor", "platform_1"), ("shadow_vendor", "platform_2")}
+
+
+def test_same_username_different_platforms_merge_when_actually_linked():
+    """The flip side: if the same-named personas on different platforms DO
+    share a wallet, they should still merge — the fix must not accidentally
+    prevent legitimate same-username linking, only the silent bare-username
+    collision when they're actually unrelated."""
+    personas = [
+        {"username": "shadow_vendor", "platform": "platform_1", "wallet": "same_wallet"},
+        {"username": "shadow_vendor", "platform": "platform_2", "wallet": "same_wallet"},
+    ]
+
+    clusters = build_clusters(personas)
+
+    assert len(clusters) == 1
+    assert clusters[0].persona_keys == {
+        ("shadow_vendor", "platform_1"),
+        ("shadow_vendor", "platform_2"),
+    }

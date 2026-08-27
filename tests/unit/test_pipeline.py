@@ -3,6 +3,8 @@ with Neo4j writes mocked out — this is the function POST /api/leads and
 scripts/ingest_and_attribute.py both call, so its correctness matters more
 than either caller individually.
 """
+from unittest.mock import MagicMock
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -98,3 +100,79 @@ def test_run_full_analysis_is_idempotent_on_rerun(tmp_path, monkeypatch):
 
     assert db.query(Actor).count() == 1
     assert db.query(Identifier).count() == 1
+
+
+def test_same_username_on_different_platforms_are_kept_as_distinct_personas(tmp_path, monkeypatch):
+    """RawPersona explicitly allows the same username to legitimately appear
+    on two different platforms as two different real people (that's what its
+    upsert-on-(username, platform) semantics assume). A prior version of the
+    pipeline keyed everything by bare username, which silently dropped one
+    persona's wallet/PGP/style data when this happened — no crash, just
+    quietly wrong results. Both must now persist correctly, unmerged, since
+    nothing here links them (different wallets, no shared PGP key, no
+    matching writing style)."""
+    _mock_neo4j(monkeypatch)
+    db = _session(tmp_path)
+
+    db.add(
+        RawPersona(
+            username="shadow_vendor",
+            platform="platform_1",
+            wallet="wallet_from_platform_1",
+        )
+    )
+    db.add(
+        RawPersona(
+            username="shadow_vendor",
+            platform="platform_2",
+            wallet="wallet_from_platform_2",
+        )
+    )
+    db.commit()
+
+    actors = pipeline.run_full_analysis(db)
+
+    assert len(actors) == 2, "two distinct personas sharing a username must not collapse into one"
+
+    identifiers = db.query(Identifier).filter(Identifier.identifier_type == "wallet").all()
+    wallets = {ident.value for ident in identifiers}
+    assert wallets == {"wallet_from_platform_1", "wallet_from_platform_2"}, (
+        "both personas' wallet data must survive — a dict keyed by bare "
+        "username would have silently dropped one"
+    )
+
+
+def _mock_session(dialect_name: str) -> MagicMock:
+    db = MagicMock()
+    db.bind.dialect.name = dialect_name
+    db.query.return_value.all.return_value = []
+    return db
+
+
+def test_advisory_lock_acquired_on_postgres(monkeypatch):
+    """Reproduced live: two POST /api/leads submitted close together enqueue
+    two Celery tasks that ran in parallel worker processes, and one crashed
+    with a ForeignKeyViolation deleting rows the other had just committed.
+    pg_advisory_xact_lock serializes concurrent runs — confirm it's actually
+    requested against Postgres."""
+    monkeypatch.setattr(pipeline, "get_neo4j_client", lambda: MagicMock())
+    db = _mock_session("postgresql")
+
+    pipeline.run_full_analysis(db)
+
+    assert db.execute.call_count == 1
+    statement = db.execute.call_args_list[0].args[0]
+    assert "pg_advisory_xact_lock" in statement.text
+
+
+def test_advisory_lock_skipped_on_sqlite(monkeypatch):
+    """SQLite (used in every other test in this file) has no
+    pg_advisory_xact_lock function and doesn't need one — a single-file test
+    DB has no real concurrent-connection risk. Calling it unconditionally
+    would break every SQLite-backed test in this suite."""
+    monkeypatch.setattr(pipeline, "get_neo4j_client", lambda: MagicMock())
+    db = _mock_session("sqlite")
+
+    pipeline.run_full_analysis(db)
+
+    assert db.execute.call_count == 0

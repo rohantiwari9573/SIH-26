@@ -23,11 +23,27 @@ class Neo4jClient:
             session.run("MATCH (n:Identifier) DETACH DELETE n")
 
     def upsert_identifier(self, identifier_type: str, value: str, source_platform: str):
-        query = """
-        MERGE (n:Identifier {type: $identifier_type, value: $value})
-        SET n.source_platform = $source_platform
-        RETURN n
-        """
+        """Usernames are platform-scoped handles that can coincidentally
+        collide across different marketplaces for different real people, so
+        a username node's MERGE key includes source_platform. Wallet/PGP-key
+        values, by contrast, ARE the same real-world entity regardless of
+        which platform observed them — merging those by value alone is
+        correct and is exactly what makes the "shared wallet across
+        platforms" linking mechanism work, so their key deliberately
+        excludes platform."""
+        if identifier_type == "username":
+            query = """
+            MERGE (n:Identifier {
+                type: $identifier_type, value: $value, source_platform: $source_platform
+            })
+            RETURN n
+            """
+        else:
+            query = """
+            MERGE (n:Identifier {type: $identifier_type, value: $value})
+            SET n.source_platform = $source_platform
+            RETURN n
+            """
         with self._driver.session() as session:
             session.run(
                 query,
@@ -37,12 +53,31 @@ class Neo4jClient:
             )
 
     def link_identifiers(
-        self, value_a: str, value_b: str, relationship: str = "LINKED_TO", weight: float = 1.0
+        self,
+        value_a: str,
+        value_b: str,
+        relationship: str = "LINKED_TO",
+        weight: float = 1.0,
+        platform_a: str | None = None,
+        platform_b: str | None = None,
     ):
-        query = """
-        MATCH (a:Identifier {value: $value_a})
-        MATCH (b:Identifier {value: $value_b})
-        MERGE (a)-[r:LINKED_TO {relationship: $relationship}]->(b)
+        """platform_a/platform_b disambiguate a username-type endpoint when
+        the same username string could exist on multiple platforms as
+        different people (see upsert_identifier) — pass the platform
+        whenever that side's value is a username. Wallet/PGP-key values
+        don't need it since those nodes merge by value alone regardless of
+        platform. Without this, MATCH {value: $value_a} would match every
+        node with that value across all platforms and link all of them."""
+        match_a = (
+            "{value: $value_a, source_platform: $platform_a}" if platform_a else "{value: $value_a}"
+        )
+        match_b = (
+            "{value: $value_b, source_platform: $platform_b}" if platform_b else "{value: $value_b}"
+        )
+        query = f"""
+        MATCH (a:Identifier {match_a})
+        MATCH (b:Identifier {match_b})
+        MERGE (a)-[r:LINKED_TO {{relationship: $relationship}}]->(b)
         SET r.weight = $weight
         """
         with self._driver.session() as session:
@@ -50,6 +85,8 @@ class Neo4jClient:
                 query,
                 value_a=value_a,
                 value_b=value_b,
+                platform_a=platform_a,
+                platform_b=platform_b,
                 relationship=relationship,
                 weight=weight,
             )
