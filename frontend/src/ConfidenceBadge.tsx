@@ -3,6 +3,7 @@ export default function ConfidenceBadge({ score }: { score: number }) {
   const level = score >= 0.7 ? "high" : score >= 0.4 ? "medium" : "low";
   return (
     <span className={`confidence-badge confidence-${level}`}>
+      <span className="confidence-dot" />
       {pct}% confidence
     </span>
   );

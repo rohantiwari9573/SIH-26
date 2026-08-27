@@ -1,5 +1,6 @@
 import { FormEvent, useState } from "react";
 import { ApiError, submitLead, waitForJob } from "./api";
+import { AlertIcon, EyeIcon, LoaderIcon, PlusIcon } from "./icons";
 
 type Status = "idle" | "submitting" | "analyzing" | "done" | "error";
 
@@ -42,9 +43,15 @@ export default function SubmitLeadView({ onDone }: { onDone: () => void }) {
 
   if (status === "done") {
     return (
-      <div className="card" style={{ width: "auto", maxWidth: 480 }}>
-        <h2>Lead analyzed</h2>
-        <p className="muted">
+      <div className="panel" style={{ maxWidth: 480, margin: "2rem auto" }}>
+        <div
+          className="brand-mark"
+          style={{ width: 40, height: 40, borderRadius: 10, marginBottom: "1rem" }}
+        >
+          <EyeIcon width={20} height={20} />
+        </div>
+        <h2 style={{ marginBottom: "0.5rem" }}>Lead analyzed</h2>
+        <p className="muted" style={{ marginBottom: "1.25rem" }}>
           The pipeline re-ran against this lead plus everything already known.
           {resultCount !== null && ` ${resultCount} actor cluster(s) now exist.`}
         </p>
@@ -56,61 +63,65 @@ export default function SubmitLeadView({ onDone }: { onDone: () => void }) {
   const busy = status === "submitting" || status === "analyzing";
 
   return (
-    <form className="card" style={{ width: "auto", maxWidth: 480 }} onSubmit={handleSubmit}>
-      <h2>Submit a new lead</h2>
-      <p className="muted">
-        Feeds one newly-collected persona into the pipeline and re-runs full
-        attribution against it plus every existing lead.
-      </p>
+    <form
+      className="panel"
+      style={{ maxWidth: 520, margin: "0 auto", display: "flex", flexDirection: "column", gap: "1.1rem" }}
+      onSubmit={handleSubmit}
+    >
+      <div>
+        <h2 style={{ fontSize: "1.15rem", marginBottom: "0.35rem" }}>Submit a new lead</h2>
+        <p className="muted">
+          Feeds one newly-collected persona into the pipeline and re-runs full attribution
+          against it plus every existing lead.
+        </p>
+      </div>
 
       <label>
-        Username *
+        Username <span className="field-hint">required</span>
         <input required value={username} onChange={(e) => setUsername(e.target.value)} />
       </label>
       <label>
-        Platform *
+        Platform <span className="field-hint">required</span>
         <input required value={platform} onChange={(e) => setPlatform(e.target.value)} />
       </label>
       <label>
-        Writing sample (for stylometric matching)
-        <textarea
-          rows={4}
-          value={sampleText}
-          onChange={(e) => setSampleText(e.target.value)}
-          style={{
-            background: "var(--bg)",
-            border: "1px solid var(--border)",
-            borderRadius: 6,
-            padding: "0.5rem",
-            color: "var(--text)",
-            fontSize: "0.9rem",
-            fontFamily: "inherit",
-          }}
-        />
+        Writing sample <span className="field-hint">for stylometric matching</span>
+        <textarea rows={4} value={sampleText} onChange={(e) => setSampleText(e.target.value)} />
       </label>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+        <label>
+          Wallet address
+          <input value={wallet} onChange={(e) => setWallet(e.target.value)} />
+        </label>
+        <label>
+          PGP key fingerprint
+          <input value={pgpKey} onChange={(e) => setPgpKey(e.target.value)} />
+        </label>
+      </div>
       <label>
-        Wallet address
-        <input value={wallet} onChange={(e) => setWallet(e.target.value)} />
-      </label>
-      <label>
-        PGP key fingerprint
-        <input value={pgpKey} onChange={(e) => setPgpKey(e.target.value)} />
-      </label>
-      <label>
-        Onion address (if an infra leak already confirmed it)
+        Onion address <span className="field-hint">if an infra leak already confirmed it</span>
         <input value={onionAddress} onChange={(e) => setOnionAddress(e.target.value)} />
       </label>
 
-      {error && <p className="error">{error}</p>}
+      {error && (
+        <p className="error">
+          <AlertIcon width={15} height={15} />
+          {error}
+        </p>
+      )}
 
-      <button type="submit" disabled={busy}>
-        {status === "submitting" && "Submitting..."}
-        {status === "analyzing" && "Analyzing..."}
-        {!busy && "Submit lead"}
-      </button>
-      <button type="button" className="link-button" onClick={onDone} disabled={busy}>
-        Cancel
-      </button>
+      <div style={{ display: "flex", gap: "0.6rem" }}>
+        <button type="submit" disabled={busy}>
+          {busy ? <LoaderIcon width={15} height={15} /> : <PlusIcon width={15} height={15} />}
+          {status === "submitting" && "Submitting..."}
+          {status === "analyzing" && "Analyzing..."}
+          {!busy && "Submit lead"}
+        </button>
+        <button type="button" className="btn-ghost" onClick={onDone} disabled={busy}>
+          Cancel
+        </button>
+      </div>
     </form>
   );
 }

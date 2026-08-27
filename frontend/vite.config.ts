@@ -10,6 +10,15 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
+    watch: {
+      // Docker Desktop on Windows doesn't propagate native filesystem
+      // change events through a bind mount to the container's inotify —
+      // without polling, chokidar (Vite's watcher) silently never fires and
+      // HMR/hot-reload does nothing after the container starts, even though
+      // files on the host are saved correctly. Harmless on Linux/macOS.
+      usePolling: true,
+      interval: 300,
+    },
     proxy: {
       "/api": {
         target: apiProxyTarget,

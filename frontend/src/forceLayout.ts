@@ -36,8 +36,8 @@ export function computeLayout(
     });
   });
 
-  const REPULSION = 4000;
-  const SPRING_LENGTH = 120;
+  const REPULSION = 5500;
+  const SPRING_LENGTH = 150;
   const SPRING_STRENGTH = 0.02;
   const CENTER_STRENGTH = 0.01;
   const DAMPING = 0.85;

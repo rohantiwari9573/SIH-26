@@ -4,11 +4,9 @@ import LoginView from "./LoginView";
 import SearchView from "./SearchView";
 import ActorProfileView from "./ActorProfileView";
 import SubmitLeadView from "./SubmitLeadView";
+import { EyeIcon, LogOutIcon, PlusIcon } from "./icons";
 
-type View =
-  | { name: "search" }
-  | { name: "profile"; actorId: string }
-  | { name: "submit" };
+type View = { name: "search" } | { name: "profile"; actorId: string } | { name: "submit" };
 
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(isLoggedIn());
@@ -27,12 +25,24 @@ export default function App() {
   return (
     <div className="app-shell">
       <header>
-        <h1>SIH26151 — Actor Attribution</h1>
-        <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
+        <div className="brand">
+          <div className="brand-mark">
+            <EyeIcon width={18} height={18} />
+          </div>
+          <div className="brand-text">
+            <h1>Argus</h1>
+            <span>Threat Actor Attribution</span>
+          </div>
+        </div>
+        <div className="actions">
           {view.name !== "submit" && (
-            <button onClick={() => setView({ name: "submit" })}>+ Submit lead</button>
+            <button className="btn-secondary" onClick={() => setView({ name: "submit" })}>
+              <PlusIcon width={16} height={16} />
+              Submit lead
+            </button>
           )}
-          <button className="link-button" onClick={handleLogout}>
+          <button className="btn-ghost" onClick={handleLogout}>
+            <LogOutIcon width={16} height={16} />
             Log out
           </button>
         </div>
@@ -45,9 +55,7 @@ export default function App() {
         {view.name === "profile" && (
           <ActorProfileView actorId={view.actorId} onBack={() => setView({ name: "search" })} />
         )}
-        {view.name === "submit" && (
-          <SubmitLeadView onDone={() => setView({ name: "search" })} />
-        )}
+        {view.name === "submit" && <SubmitLeadView onDone={() => setView({ name: "search" })} />}
       </main>
     </div>
   );
