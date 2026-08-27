@@ -23,10 +23,12 @@ def main() -> None:
         print(f"  {cluster}")
 
     # Simulate: infra_scan already flagged careless_admin's mirror as leaked.
-    infra_leaked = {"careless_admin"}
+    infra_leaked = {
+        (p["username"], p["platform"]) for p in personas if p["username"] == "careless_admin"
+    }
 
     clusters = build_clusters(
-        personas, infra_leaked_usernames=infra_leaked, wallet_transactions=transactions
+        personas, infra_leaked_persona_keys=infra_leaked, wallet_transactions=transactions
     )
 
     print("\n=== Attribution clusters ===")

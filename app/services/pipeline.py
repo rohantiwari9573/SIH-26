@@ -88,10 +88,12 @@ def run_full_analysis(
     # it targets a controlled mock host, not arbitrary onion addresses); a
     # persona flagged with onion_address is treated as already-confirmed-leaked,
     # consistent with how scripts/ingest_and_attribute.py has always modeled it.
-    infra_leaked_usernames = {p["username"] for p in personas if p.get("onion_address")}
+    infra_leaked_persona_keys = {
+        (p["username"], p["platform"]) for p in personas if p.get("onion_address")
+    }
     clusters = build_clusters(
         personas,
-        infra_leaked_usernames=infra_leaked_usernames,
+        infra_leaked_persona_keys=infra_leaked_persona_keys,
         wallet_transactions=wallet_transactions,
     )
     # Keyed by (username, platform), not bare username — RawPersona allows

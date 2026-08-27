@@ -135,17 +135,20 @@ def _stylometric_pairs(
 
 def build_clusters(
     personas: list[dict],
-    infra_leaked_usernames: set[str] | None = None,
+    infra_leaked_persona_keys: set[PersonaKey] | None = None,
     style_threshold: float = 0.9,
     wallet_transactions: list[dict] | None = None,
 ) -> list[AttributionCluster]:
     """personas: [{"username", "platform", "sample_text"?, "wallet"?, "pgp_key"?}, ...]
-    infra_leaked_usernames: usernames whose hosting infra was independently confirmed leaked
-    (from app.services.infra_scan), used to add the infra signal to any cluster they end up in.
+    infra_leaked_persona_keys: (username, platform) keys whose hosting infra was
+    independently confirmed leaked (from app.services.infra_scan), used to add the infra
+    signal to any cluster they end up in. Keyed by persona, not bare username — the same
+    username can legitimately exist on two platforms as two different people, and only one
+    of them may actually be the one with the confirmed leak.
     wallet_transactions: optional [{"tx_id", "inputs": [addr, ...]}, ...] fed to the
     wallet-clustering pillar so co-spent-but-differently-labeled wallets also link personas.
     """
-    infra_leaked_usernames = infra_leaked_usernames or set()
+    infra_leaked_persona_keys = infra_leaked_persona_keys or set()
     persona_keys = [_persona_key(p) for p in personas]
     uf = _UnionFind(persona_keys)
 
@@ -171,13 +174,12 @@ def build_clusters(
 
     clusters: list[AttributionCluster] = []
     for members in groups.values():
-        member_usernames = {k[0] for k in members}
         member_edges_raw = [e for e in edges if e[0] in members and e[1] in members]
         member_edges = [(a[0], b[0], t, w) for a, b, t, w in member_edges_raw]
 
         style_scores = [e[3] for e in member_edges if e[2] == "stylometry"]
         has_shared_id = any(e[2].startswith("shared_") for e in member_edges)
-        infra_match = bool(member_usernames & infra_leaked_usernames)
+        infra_match = bool(members & infra_leaked_persona_keys)
 
         confidence = compute_confidence(
             ConfidenceInputs(

@@ -54,13 +54,35 @@ def test_unrelated_persona_stays_in_its_own_cluster():
 
 def test_infra_leak_boosts_confidence_for_its_cluster():
     without_infra = build_clusters(PERSONAS)
-    with_infra = build_clusters(PERSONAS, infra_leaked_usernames={"shadow_vendor"})
+    with_infra = build_clusters(
+        PERSONAS, infra_leaked_persona_keys={("shadow_vendor", "mock_marketplace_1")}
+    )
 
     top_without = next(c for c in without_infra if "shadow_vendor" in c.usernames)
     top_with = next(c for c in with_infra if "shadow_vendor" in c.usernames)
 
     assert top_with.confidence > top_without.confidence
     assert top_with.infra_match is True
+
+
+def test_infra_leak_does_not_bleed_into_a_different_platform_with_same_username():
+    """The same bug class the identity refactor fixed elsewhere, but in the
+    infra-leak signal specifically: a persona that was never actually
+    confirmed leaked must not show infra_match=True just because it shares a
+    username string with a genuinely-leaked persona on a different platform."""
+    personas = [
+        {"username": "shadow_vendor", "platform": "platform_1", "wallet": "wallet_1"},
+        {"username": "shadow_vendor", "platform": "platform_2", "wallet": "wallet_2"},
+    ]
+    clusters = build_clusters(
+        personas, infra_leaked_persona_keys={("shadow_vendor", "platform_2")}
+    )
+
+    leaked = next(c for c in clusters if ("shadow_vendor", "platform_2") in c.persona_keys)
+    not_leaked = next(c for c in clusters if ("shadow_vendor", "platform_1") in c.persona_keys)
+
+    assert leaked.infra_match is True
+    assert not_leaked.infra_match is False
 
 
 def test_no_shared_identifiers_or_style_yields_singleton_clusters():
