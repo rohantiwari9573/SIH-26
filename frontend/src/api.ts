@@ -62,6 +62,21 @@ export function isLoggedIn(): boolean {
   return getToken() !== null;
 }
 
+/** FastAPI error responses are JSON like {"detail": "..."} — showing that
+ * raw to the user (as this used to) renders literal braces/quotes in the UI
+ * instead of a readable message. Falls back to the raw text for non-JSON
+ * error bodies (e.g. a proxy/nginx error page). */
+async function _extractErrorMessage(response: Response): Promise<string> {
+  const body = await response.text();
+  try {
+    const parsed = JSON.parse(body);
+    if (typeof parsed?.detail === "string") return parsed.detail;
+  } catch {
+    // not JSON — fall through to raw text
+  }
+  return body || response.statusText;
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getToken();
   const headers = new Headers(init.headers);
@@ -69,8 +84,18 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   const response = await fetch(path, { ...init, headers });
   if (!response.ok) {
-    const body = await response.text();
-    throw new ApiError(response.status, body || response.statusText);
+    const message = await _extractErrorMessage(response);
+    // A 401 on a request that DID carry a token means the token is
+    // expired/invalid, not that the user typed the wrong password (that
+    // case has no token attached — e.g. the login call itself). Clear the
+    // stale token and bounce back to the login screen instead of leaving
+    // the authenticated views showing a raw "could not validate
+    // credentials" error underneath a UI that still claims to be logged in.
+    if (response.status === 401 && token) {
+      setToken(null);
+      window.location.reload();
+    }
+    throw new ApiError(response.status, message);
   }
   return response.json() as Promise<T>;
 }
@@ -149,7 +174,12 @@ export async function downloadExport(
 
   const response = await fetch(`/api/export/${actorId}/${format}`, { headers });
   if (!response.ok) {
-    throw new ApiError(response.status, await response.text());
+    const message = await _extractErrorMessage(response);
+    if (response.status === 401 && token) {
+      setToken(null);
+      window.location.reload();
+    }
+    throw new ApiError(response.status, message);
   }
 
   const blob = await response.blob();

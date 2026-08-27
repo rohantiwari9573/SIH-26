@@ -23,7 +23,15 @@ def get_current_user(
     if subject is None:
         raise credentials_exception
 
-    user = db.get(User, uuid.UUID(subject))
+    try:
+        user_id = uuid.UUID(subject)
+    except ValueError:
+        # A validly-signed token should always carry a UUID "sub" (we mint it
+        # from str(user.id)), but a malformed/tampered token that somehow
+        # still passes signature verification shouldn't 500 — fail closed.
+        raise credentials_exception
+
+    user = db.get(User, user_id)
     if user is None:
         raise credentials_exception
     return user

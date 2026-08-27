@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 
 from app.services.scoring import ConfidenceInputs, compute_confidence
 from app.services.stylometry.classifier import similarity_score
+from app.services.wallet_cluster.clustering import cluster_wallets
 
 SHARED_IDENTIFIER_TYPES = ("wallet", "pgp_key")
 
@@ -40,15 +41,45 @@ class _UnionFind:
             self.parent[root_a] = root_b
 
 
-def _shared_identifier_pairs(personas: list[dict]) -> list[tuple[str, str, str]]:
-    """Any two personas sharing a wallet or PGP key value are almost certainly linked."""
+def _wallet_cluster_lookup(wallet_transactions: list[dict] | None) -> dict[str, str]:
+    """Maps each wallet address to a canonical key shared by every address in
+    its common-input-ownership cluster (app.services.wallet_cluster) — so two
+    *different* addresses provably co-spent by the same real owner count as
+    the same linking evidence, not just an exact string match on one address
+    reused verbatim. Previously this pillar's clustering ran (and was
+    demoed/printed by scripts/run_attribution_demo.py) but never actually
+    influenced attribution — this is what wires it in.
+    """
+    if not wallet_transactions:
+        return {}
+    lookup: dict[str, str] = {}
+    for cluster in cluster_wallets(wallet_transactions):
+        if len(cluster) < 2:
+            continue  # a singleton carries no extra linking info beyond its own string
+        canonical = min(cluster)
+        for address in cluster:
+            lookup[address] = canonical
+    return lookup
+
+
+def _shared_identifier_pairs(
+    personas: list[dict], wallet_cluster_lookup: dict[str, str] | None = None
+) -> list[tuple[str, str, str]]:
+    """Any two personas sharing a wallet or PGP key value are almost certainly
+    linked. Wallets are additionally grouped by common-input-ownership cluster
+    (see `_wallet_cluster_lookup`) when transaction data is available, so
+    linked-but-differently-labeled wallet addresses aren't invisible to the
+    pipeline just because their raw strings differ."""
+    wallet_cluster_lookup = wallet_cluster_lookup or {}
     pairs: list[tuple[str, str, str]] = []
     for id_type in SHARED_IDENTIFIER_TYPES:
         by_value: dict[str, list[str]] = {}
         for persona in personas:
             value = persona.get(id_type)
-            if value:
-                by_value.setdefault(value, []).append(persona["username"])
+            if not value:
+                continue
+            key = wallet_cluster_lookup.get(value, value) if id_type == "wallet" else value
+            by_value.setdefault(key, []).append(persona["username"])
         for usernames in by_value.values():
             for i in range(1, len(usernames)):
                 pairs.append((usernames[0], usernames[i], id_type))
@@ -76,16 +107,19 @@ def build_clusters(
     personas: list[dict],
     infra_leaked_usernames: set[str] | None = None,
     style_threshold: float = 0.9,
+    wallet_transactions: list[dict] | None = None,
 ) -> list[AttributionCluster]:
     """personas: [{"username", "platform", "sample_text"?, "wallet"?, "pgp_key"?}, ...]
     infra_leaked_usernames: usernames whose hosting infra was independently confirmed leaked
     (from app.services.infra_scan), used to add the infra signal to any cluster they end up in.
+    wallet_transactions: optional [{"tx_id", "inputs": [addr, ...]}, ...] fed to the
+    wallet-clustering pillar so co-spent-but-differently-labeled wallets also link personas.
     """
     infra_leaked_usernames = infra_leaked_usernames or set()
     usernames = [p["username"] for p in personas]
     uf = _UnionFind(usernames)
 
-    shared_pairs = _shared_identifier_pairs(personas)
+    shared_pairs = _shared_identifier_pairs(personas, _wallet_cluster_lookup(wallet_transactions))
     style_pairs = _stylometric_pairs(personas, style_threshold)
 
     edges: list[tuple[str, str, str, float]] = []

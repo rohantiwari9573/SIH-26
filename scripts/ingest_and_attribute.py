@@ -21,6 +21,7 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 def main() -> None:
     personas = json.loads((DATA_DIR / "personas.json").read_text())
+    wallet_transactions = json.loads((DATA_DIR / "wallet_transactions.json").read_text())
 
     db = SessionLocal()
     try:
@@ -39,7 +40,7 @@ def main() -> None:
             )
         db.commit()
 
-        actors = run_full_analysis(db)
+        actors = run_full_analysis(db, wallet_transactions=wallet_transactions)
         for actor in actors:
             print(f"Persisted actor {actor.id} ({actor.label}) confidence={actor.confidence_score}")
     finally:

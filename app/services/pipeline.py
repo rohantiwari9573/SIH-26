@@ -33,7 +33,18 @@ def _persona_dict(raw: RawPersona) -> dict:
     }
 
 
-def run_full_analysis(db: Session) -> list[Actor]:
+def run_full_analysis(
+    db: Session, wallet_transactions: list[dict] | None = None
+) -> list[Actor]:
+    """wallet_transactions: optional co-spending data (see
+    app.services.wallet_cluster) feeding the wallet-clustering pillar into
+    attribution. Omitted by the live POST /api/leads path — RawPersona has no
+    transaction-level wallet data source yet, only a single address string
+    per persona — but scripts/ingest_and_attribute.py passes
+    data/wallet_transactions.json through so the demo dataset actually
+    exercises this pillar rather than just falling back to exact-string
+    wallet matching.
+    """
     raw_personas = db.query(RawPersona).all()
     personas = [_persona_dict(p) for p in raw_personas]
 
@@ -57,7 +68,11 @@ def run_full_analysis(db: Session) -> list[Actor]:
     # persona flagged with onion_address is treated as already-confirmed-leaked,
     # consistent with how scripts/ingest_and_attribute.py has always modeled it.
     infra_leaked_usernames = {p["username"] for p in personas if p.get("onion_address")}
-    clusters = build_clusters(personas, infra_leaked_usernames=infra_leaked_usernames)
+    clusters = build_clusters(
+        personas,
+        infra_leaked_usernames=infra_leaked_usernames,
+        wallet_transactions=wallet_transactions,
+    )
     personas_by_username = {p["username"]: p for p in personas}
 
     # Derived tables are rebuilt from scratch each run — see module docstring.

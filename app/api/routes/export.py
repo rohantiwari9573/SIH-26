@@ -16,6 +16,23 @@ from app.schemas.actor import ActorProfileOut
 router = APIRouter(prefix="/api/export", tags=["export"], dependencies=[Depends(get_current_user)])
 
 
+_FORMULA_TRIGGER_CHARS = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_safe(value) -> str:
+    """Guards against CSV/formula injection (OWASP): a cell value starting
+    with =, +, -, or @ is interpreted as a formula by Excel/Sheets when the
+    file is opened, not as literal text. This matters here specifically
+    because POST /api/leads lets an authenticated user submit free-text
+    wallet/pgp_key/onion_address/username values that flow straight into
+    this export — prefixing a leading apostrophe neutralizes the formula
+    without changing what the cell displays."""
+    text = str(value)
+    if text and text[0] in _FORMULA_TRIGGER_CHARS:
+        return "'" + text
+    return text
+
+
 def _load_actor(actor_id: uuid.UUID, db: Session) -> Actor:
     actor = (
         db.query(Actor)
@@ -47,9 +64,23 @@ def export_csv(actor_id: uuid.UUID, db: Session = Depends(get_db)):
     writer = csv.writer(buffer)
     writer.writerow(["type", "value", "source", "detail"])
     for ident in actor.identifiers:
-        writer.writerow([ident.identifier_type, ident.value, ident.source_platform, ""])
+        writer.writerow(
+            [
+                _csv_safe(ident.identifier_type),
+                _csv_safe(ident.value),
+                _csv_safe(ident.source_platform),
+                "",
+            ]
+        )
     for finding in actor.infra_findings:
-        writer.writerow([finding.finding_type, finding.onion_address, "infra_scan", finding.detail])
+        writer.writerow(
+            [
+                _csv_safe(finding.finding_type),
+                _csv_safe(finding.onion_address),
+                "infra_scan",
+                _csv_safe(finding.detail),
+            ]
+        )
     buffer.seek(0)
 
     return StreamingResponse(
@@ -62,16 +93,24 @@ def export_csv(actor_id: uuid.UUID, db: Session = Depends(get_db)):
 _PAGE_MARGIN_BOTTOM = 50
 
 
-def _new_page(pdf: canvas.Canvas, height: float) -> float:
-    pdf.showPage()
-    pdf.setFont("Helvetica", 10)
-    return height - _PAGE_MARGIN_BOTTOM
-
-
-def _draw_line(pdf: canvas.Canvas, x: float, y: float, height: float, text: str) -> float:
-    """Draws one line, starting a fresh page first if we're about to run off the bottom."""
+def _draw_line(
+    pdf: canvas.Canvas,
+    x: float,
+    y: float,
+    height: float,
+    text: str,
+    font: tuple[str, int] = ("Helvetica", 10),
+) -> float:
+    """Draws one line, starting a fresh page first if we're about to run off
+    the bottom. Always (re-)applies `font` itself, including right after a
+    page break — reportlab's showPage() does not carry font state across
+    pages, so a version of this that reset to a hardcoded font on every new
+    page would silently drop a caller's bold/size when a heading line (not
+    just body text) happened to fall right at a page boundary."""
     if y < _PAGE_MARGIN_BOTTOM:
-        y = _new_page(pdf, height)
+        pdf.showPage()
+        y = height - _PAGE_MARGIN_BOTTOM
+    pdf.setFont(*font)
     pdf.drawString(x, y, text)
     return y - 15
 
@@ -92,10 +131,8 @@ def export_report(actor_id: uuid.UUID, db: Session = Depends(get_db)):
     pdf.drawString(50, y, f"Confidence score: {actor.confidence_score:.2f}")
     y -= 30
 
-    pdf.setFont("Helvetica-Bold", 13)
-    y = _draw_line(pdf, 50, y, height, "Identifiers")
+    y = _draw_line(pdf, 50, y, height, "Identifiers", font=("Helvetica-Bold", 13))
     y -= 5
-    pdf.setFont("Helvetica", 10)
     for ident in actor.identifiers:
         y = _draw_line(
             pdf, 60, y, height,
@@ -103,10 +140,8 @@ def export_report(actor_id: uuid.UUID, db: Session = Depends(get_db)):
         )
 
     y -= 15
-    pdf.setFont("Helvetica-Bold", 13)
-    y = _draw_line(pdf, 50, y, height, "Infrastructure Findings")
+    y = _draw_line(pdf, 50, y, height, "Infrastructure Findings", font=("Helvetica-Bold", 13))
     y -= 5
-    pdf.setFont("Helvetica", 10)
     for finding in actor.infra_findings:
         y = _draw_line(pdf, 60, y, height, f"- [{finding.finding_type}] {finding.onion_address}")
 

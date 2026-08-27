@@ -46,6 +46,7 @@ export default function LoginView({ onLoggedIn }: { onLoggedIn: () => void }) {
             type="password"
             required
             minLength={8}
+            maxLength={72}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />

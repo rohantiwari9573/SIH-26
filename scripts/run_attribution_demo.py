@@ -25,7 +25,9 @@ def main() -> None:
     # Simulate: infra_scan already flagged careless_admin's mirror as leaked.
     infra_leaked = {"careless_admin"}
 
-    clusters = build_clusters(personas, infra_leaked_usernames=infra_leaked)
+    clusters = build_clusters(
+        personas, infra_leaked_usernames=infra_leaked, wallet_transactions=transactions
+    )
 
     print("\n=== Attribution clusters ===")
     for cluster in clusters:

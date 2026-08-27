@@ -71,3 +71,42 @@ def test_no_shared_identifiers_or_style_yields_singleton_clusters():
     clusters = build_clusters(isolated)
     assert len(clusters) == 2
     assert all(len(c.usernames) == 1 for c in clusters)
+
+
+def test_wallet_clustering_links_personas_with_different_co_spent_addresses():
+    """Two personas whose wallets are provably the same owner (co-spent in one
+    transaction) but who never reuse the exact same address string were
+    previously invisible to attribution — this is the wiring that fixes it."""
+    personas = [
+        {
+            "username": "vendor_x",
+            "platform": "p1",
+            "wallet": "addrA",
+        },
+        {
+            "username": "vendor_y",
+            "platform": "p2",
+            "wallet": "addrB",
+        },
+        {
+            "username": "vendor_unrelated",
+            "platform": "p1",
+            "wallet": "addrC",
+        },
+    ]
+    transactions = [
+        {"tx_id": "tx1", "inputs": ["addrA", "addrB"]},
+        {"tx_id": "tx2", "inputs": ["addrC"]},
+    ]
+
+    without_transactions = build_clusters(personas)
+    linked = next(c for c in without_transactions if "vendor_x" in c.usernames)
+    assert linked.usernames == {"vendor_x"}, "exact-string matching alone must not link addrA/addrB"
+
+    with_transactions = build_clusters(personas, wallet_transactions=transactions)
+    linked = next(c for c in with_transactions if "vendor_x" in c.usernames)
+    assert linked.usernames == {"vendor_x", "vendor_y"}
+    assert linked.relationship_strength == 1.0
+
+    unrelated = next(c for c in with_transactions if "vendor_unrelated" in c.usernames)
+    assert unrelated.usernames == {"vendor_unrelated"}

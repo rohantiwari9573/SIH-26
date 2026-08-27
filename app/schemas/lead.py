@@ -2,12 +2,15 @@ from pydantic import BaseModel, Field
 
 
 class LeadCreate(BaseModel):
+    # max_length values mirror the RawPersona column limits (app/models/actor.py)
+    # — without them, an over-long value passes validation here and then hits
+    # a raw Postgres DataError on insert (500) instead of a clean 422.
     username: str = Field(min_length=1, max_length=255)
     platform: str = Field(min_length=1, max_length=255)
     sample_text: str | None = None
-    wallet: str | None = None
-    pgp_key: str | None = None
-    onion_address: str | None = None
+    wallet: str | None = Field(default=None, max_length=512)
+    pgp_key: str | None = Field(default=None, max_length=512)
+    onion_address: str | None = Field(default=None, max_length=255)
     vouched_by: list[str] = Field(default_factory=list)
 
 
