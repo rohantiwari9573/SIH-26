@@ -1,16 +1,23 @@
 """Generates a synthetic marketplace dataset for the pillar-owner teams to build
 against. Entirely fabricated — no real scraped or leaked data, per docs/ETHICS.md.
 
-Contains three storylines on purpose, so the demo can show both a true positive
-and a true negative:
+Contains four storylines on purpose, so the demo can show a true positive, a
+true negative, and the graded case in between — not just a binary yes/no:
 
 1. `shadow_vendor` / `nightowl_88` — the flagship rebrand story: same wallet,
    same PGP key, and matching writing style across two marketplaces.
+   High confidence (~0.84), all three signal types agree.
 2. `quiet_trader` / `midnight_courier` — a negative control: different wallets,
    different PGP keys, distinct writing style. The system must NOT merge these,
    or a judge asking "what stops false positives" has an easy hit.
 3. `careless_admin` — tied to a mock onion address with a deliberately leaky
    mirror target (see mock_leaky_service/), feeding the infra-scan pillar.
+4. `frostbyte_dealer` / `javabean_vendor` — partial evidence: matching writing
+   style (same distinctive phrasing tics) but no shared wallet or PGP key yet.
+   Lower confidence than the flagship pair, and correctly so — this is the
+   talking point for "the system doesn't just say yes/no, it grades how sure
+   it is," and for demonstrating the live lead-submission flow (submitting a
+   shared wallet for one of these later should raise its confidence live).
 
 Run: python scripts/generate_synthetic_dataset.py
 Writes: data/personas.json, data/wallet_transactions.json
@@ -118,6 +125,48 @@ PERSONAS = [
         "onion_address": "demo3xample7onion0000.onion",
         "vouched_by": [],
     },
+    # Storyline 4: partial evidence — stylometry agrees, no shared identifiers
+    # yet. Deliberately a different voice/phrasing pattern from storyline 1
+    # (clipped, informal, "look... real talk" tics instead of "honestly... I
+    # mean... really") — reusing the same template with word-swaps was tried
+    # first and it accidentally stylometrically merged with storyline 1's
+    # pair, which defeated the point of having a separate partial-evidence
+    # cluster. Verified via scripts/run_attribution_demo.py that this pair
+    # clusters with each other but not with storyline 1, 2, or 3.
+    {
+        "username": "frostbyte_dealer",
+        "platform": "mock_marketplace_1",
+        "sample_text": (
+            "look, not gonna lie, this batch is solid, real solid, better "
+            "than what i had before honestly. been doing this a minute now "
+            "and never burned nobody, not once, straight up, ask around if "
+            "you want. i don't play games with quality, i check stuff twice "
+            "before it ships, always, cause that's just how i move, no "
+            "shortcuts here ever. if i'm slow to hit back it's cause i got "
+            "a bunch of people messaging at once, so just chill and give it "
+            "a minute, real talk, it'll get sorted."
+        ),
+        "wallet": "1FrostbyteWalletUnlinked4444",
+        "pgp_key": "DEMO-PGP-KEY-FROSTBYTE-JKL345",
+        "vouched_by": [],
+    },
+    {
+        "username": "javabean_vendor",
+        "platform": "mock_marketplace_3",
+        "sample_text": (
+            "not gonna lie, look, this batch is real solid, better than "
+            "before honestly, for real. been doing this a minute and never "
+            "burned nobody here either, not once, straight up, you can ask "
+            "around. i don't play games with quality, i check stuff twice "
+            "before it ships, always, that's just how i move, no shortcuts, "
+            "ever. if i'm slow to hit back it's cause i got a bunch of "
+            "people messaging me at once, so just chill, give it a minute, "
+            "real talk."
+        ),
+        "wallet": "1JavabeanWalletUnlinked5555",
+        "pgp_key": "DEMO-PGP-KEY-JAVABEAN-MNO678",
+        "vouched_by": [],
+    },
 ]
 
 WALLET_TRANSACTIONS = [
@@ -137,6 +186,14 @@ WALLET_TRANSACTIONS = [
     {
         "tx_id": "tx_demo_3",
         "inputs": ["1AnotherUnrelatedWalletForCourier2222"],
+    },
+    {
+        "tx_id": "tx_demo_4",
+        "inputs": ["1FrostbyteWalletUnlinked4444"],
+    },
+    {
+        "tx_id": "tx_demo_5",
+        "inputs": ["1JavabeanWalletUnlinked5555"],
     },
 ]
 

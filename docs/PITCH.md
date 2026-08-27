@@ -45,11 +45,26 @@ Run this exact sequence on stage. It's the same flow verified in this session.
    just as a number): *shared wallet + PGP key contributes most of the score
    because it's close to a deterministic match; the writing-style similarity
    (94% vs. 62-87% for unrelated pairs) corroborates it independently.*
-5. **Click all three export buttons** — CSV, JSON, PDF report — show the
+5. **Scroll to the relationship graph** on the flagship actor's profile —
+   this is the live visual proof of the relationship-mapping pillar: both
+   usernames visibly converging on the same wallet and PGP key nodes.
+6. **Click all three export buttons** — CSV, JSON, PDF report — show the
    files land in Downloads with real content, live.
-6. **Pull up `careless_admin`** (the low-confidence infra-only lead) to show
+7. **Pull up `careless_admin`** (the low-confidence infra-only lead) to show
    the infra pillar working on its own, independent of the other two —
    this demonstrates pillar 1 isn't just decorative.
+8. **Pull up `frostbyte_dealer` / `javabean_vendor`** (confidence ~18%) —
+   this is the graded-confidence talking point: stylometry alone flagged
+   them as similar, but with no shared wallet/PGP yet, the system correctly
+   reports lower confidence instead of a false binary yes. Then, live:
+   **submit a new lead** through "+ Submit lead" for username
+   `javabean_vendor`, platform `mock_marketplace_3`, wallet
+   `1FrostbyteWalletUnlinked4444` (frostbyte_dealer's wallet) — this is an
+   *update* to the existing persona (submissions upsert on username+platform),
+   giving it the missing wallet link. Watch the pipeline re-run and the pair's
+   confidence jump from ~18% once the shared-wallet evidence exists. This is
+   the single best "wow" moment in the demo: it proves the pipeline isn't
+   just a static seeded dataset.
 
 ## Anticipated judge questions — have answers ready
 

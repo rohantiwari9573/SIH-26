@@ -41,5 +41,21 @@
     "pgp_key": "DEMO-PGP-KEY-CARELESS-GHI012",
     "onion_address": "demo3xample7onion0000.onion",
     "vouched_by": []
+  },
+  {
+    "username": "frostbyte_dealer",
+    "platform": "mock_marketplace_1",
+    "sample_text": "look, not gonna lie, this batch is solid, real solid, better than what i had before honestly. been doing this a minute now and never burned nobody, not once, straight up, ask around if you want. i don't play games with quality, i check stuff twice before it ships, always, cause that's just how i move, no shortcuts here ever. if i'm slow to hit back it's cause i got a bunch of people messaging at once, so just chill and give it a minute, real talk, it'll get sorted.",
+    "wallet": "1FrostbyteWalletUnlinked4444",
+    "pgp_key": "DEMO-PGP-KEY-FROSTBYTE-JKL345",
+    "vouched_by": []
+  },
+  {
+    "username": "javabean_vendor",
+    "platform": "mock_marketplace_3",
+    "sample_text": "not gonna lie, look, this batch is real solid, better than before honestly, for real. been doing this a minute and never burned nobody here either, not once, straight up, you can ask around. i don't play games with quality, i check stuff twice before it ships, always, that's just how i move, no shortcuts, ever. if i'm slow to hit back it's cause i got a bunch of people messaging me at once, so just chill, give it a minute, real talk.",
+    "wallet": "1JavabeanWalletUnlinked5555",
+    "pgp_key": "DEMO-PGP-KEY-JAVABEAN-MNO678",
+    "vouched_by": []
   }
 ]

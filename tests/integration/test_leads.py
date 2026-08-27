@@ -81,6 +81,39 @@ def test_submit_lead_persists_and_enqueues(client, monkeypatch):
     assert stored.wallet == "1NewLeadWallet"
 
 
+def test_resubmitting_same_username_and_platform_upserts_not_duplicates(client, monkeypatch):
+    """Two RawPersona rows sharing one username is an edge case the pipeline
+    has no principled way to reconcile — submissions must upsert, not insert,
+    when username+platform already match an existing lead."""
+    test_client, SessionLocal = client
+    headers = _auth_headers(test_client)
+    monkeypatch.setattr(
+        leads_route.reanalyze_all, "delay", lambda: _FakeAsyncResult("fake-task-id")
+    )
+
+    test_client.post(
+        "/api/leads",
+        json={"username": "javabean_vendor", "platform": "mock_marketplace_3"},
+        headers=headers,
+    )
+    test_client.post(
+        "/api/leads",
+        json={
+            "username": "javabean_vendor",
+            "platform": "mock_marketplace_3",
+            "wallet": "1SharedWalletAddedLater",
+        },
+        headers=headers,
+    )
+
+    db = SessionLocal()
+    matches = db.query(RawPersona).filter(RawPersona.username == "javabean_vendor").all()
+    db.close()
+
+    assert len(matches) == 1
+    assert matches[0].wallet == "1SharedWalletAddedLater"
+
+
 def test_submit_lead_requires_auth(client):
     test_client, _ = client
     response = test_client.post(
