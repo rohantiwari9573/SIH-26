@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+*.db
+.pytest_cache/
+.coverage
+htmlcov/
+node_modules/
+dist/
+build/
+.idea/
+.vscode/
+*.log
+
+# Generated at build/run time by mock_leaky_service/generate_cert.py
+mock_leaky_service/cert.pem
+mock_leaky_service/key.pem

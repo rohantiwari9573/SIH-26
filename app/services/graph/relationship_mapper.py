@@ -1,0 +1,46 @@
+"""Builds the entity graph across marketplaces: usernames, PGP keys, wallets,
+and trust relationships (vouches, repeated co-occurrence in listings/reviews).
+"""
+from app.services.graph.neo4j_client import get_neo4j_client
+
+
+def ingest_marketplace_record(record: dict) -> None:
+    """record shape (from scraper/dataset):
+    {
+        "username": "shadow_vendor",
+        "platform": "mock_marketplace_1",
+        "pgp_key": "ABCD1234...",
+        "wallet": "1A2b3C...",
+        "vouched_by": ["other_username"],
+    }
+    """
+    client = get_neo4j_client()
+
+    client.upsert_identifier("username", record["username"], record["platform"])
+
+    if record.get("pgp_key"):
+        client.upsert_identifier("pgp_key", record["pgp_key"], record["platform"])
+        client.link_identifiers(record["username"], record["pgp_key"], "USES_KEY")
+
+    if record.get("wallet"):
+        client.upsert_identifier("wallet", record["wallet"], record["platform"])
+        client.link_identifiers(record["username"], record["wallet"], "USES_WALLET")
+
+    for voucher in record.get("vouched_by", []):
+        client.upsert_identifier("username", voucher, record["platform"])
+        client.link_identifiers(voucher, record["username"], "VOUCHES_FOR")
+
+
+def find_related_identifiers(value: str, depth: int = 2) -> list[dict]:
+    client = get_neo4j_client()
+    return client.get_connected_component(value, depth=depth)
+
+
+def get_actor_graph(identifier_values: list[str], depth: int = 1) -> dict:
+    """Nodes + edges for the dashboard's graph view, seeded from an actor's
+    known identifiers (not just one) so the whole cluster's neighborhood shows
+    up, not just whatever one node happens to be reachable from."""
+    if not identifier_values:
+        return {"nodes": [], "edges": []}
+    client = get_neo4j_client()
+    return client.get_subgraph(identifier_values, depth=depth)
