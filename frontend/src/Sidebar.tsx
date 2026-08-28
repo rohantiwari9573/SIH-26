@@ -34,7 +34,7 @@ const INVESTIGATION: NavItem[] = [
 ];
 
 const COLLECTION: NavItem[] = [
-  { key: "sources", label: "Sources & Feeds", icon: <RssIcon width={17} height={17} />, available: false },
+  { key: "sources", label: "Sources & Feeds", icon: <RssIcon width={17} height={17} />, available: true },
   { key: "hidden-services", label: "Hidden Services", icon: <GlobeIcon width={17} height={17} />, available: false },
   { key: "marketplaces", label: "Marketplaces", icon: <StoreIcon width={17} height={17} />, available: false },
   { key: "forums", label: "Forums", icon: <MessageIcon width={17} height={17} />, available: false },

@@ -59,3 +59,26 @@ class ThreatEvent(Base):
     event_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     threat_level_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class BreachRecord(Base):
+    """One publicly-listed data breach from Have I Been Pwned's breach
+    directory (haveibeenpwned.com/api/v3/breaches — no API key required).
+    This is breach *metadata* only (name, domain, scale, what data types
+    were exposed) — HIBP's per-email lookup ("was this address in a
+    breach") requires a paid key Argus doesn't hold, so no individual
+    email/account exposure data is collected here."""
+
+    __tablename__ = "breach_records"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    name: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    breach_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    added_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    pwn_count: Mapped[int] = mapped_column(Integer, default=0)
+    data_classes: Mapped[list] = mapped_column(JSON, default=list)
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

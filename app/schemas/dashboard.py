@@ -88,3 +88,27 @@ class ThreatEventOut(BaseModel):
     tags: list[str]
     event_date: date | None
     threat_level_id: int | None
+
+
+class BreachRecordOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    name: str
+    domain: str | None
+    breach_date: date | None
+    pwn_count: int
+    data_classes: list[str]
+    is_verified: bool
+
+
+class DataSourceStatusOut(BaseModel):
+    """Real per-source record counts and the timestamp of the most recent
+    row Argus actually holds for that source — never a fabricated
+    "online/offline" status. A source with 0 records simply hasn't been
+    ingested yet."""
+
+    key: str
+    label: str
+    category: str  # historical | continuously_refreshed | feed | api
+    record_count: int
+    most_recent_at: datetime | None

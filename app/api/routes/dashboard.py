@@ -12,9 +12,11 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.actor import Actor, AttributionEdge, Identifier, InfraFinding, RawPersona
-from app.models.external import ThreatEvent, TorRelay
+from app.models.external import BreachRecord, ThreatEvent, TorRelay
 from app.schemas.dashboard import (
+    BreachRecordOut,
     DashboardStatsOut,
+    DataSourceStatusOut,
     InfraFindingRowOut,
     SourceBreakdownItem,
     StatCard,
@@ -242,7 +244,7 @@ def get_tor_relays(limit: int = 50, db: Session = Depends(get_db)):
 
 @router.get("/threat-events", response_model=list[ThreatEventOut])
 def get_threat_events(limit: int = 50, db: Session = Depends(get_db)):
-    """Real event metadata from CIRCL's public MISP OSINT feed (see
+    """Real event metadata from public MISP-format OSINT feeds (see
     scripts/ingest_misp_osint.py). A feed entry is not proof of actor
     ownership — see ARGUS_DATA_RESOURCES.md #4."""
     return (
@@ -251,3 +253,53 @@ def get_threat_events(limit: int = 50, db: Session = Depends(get_db)):
         .limit(limit)
         .all()
     )
+
+
+@router.get("/breaches", response_model=list[BreachRecordOut])
+def get_breach_records(limit: int = 50, db: Session = Depends(get_db)):
+    """Real breach directory metadata from Have I Been Pwned's public
+    /breaches endpoint (see scripts/ingest_hibp.py). This is breach-level
+    metadata, not a record of any individual person's exposure — see
+    ARGUS_DATA_RESOURCES.md #8."""
+    return (
+        db.query(BreachRecord)
+        .order_by(BreachRecord.added_date.desc().nullslast())
+        .limit(limit)
+        .all()
+    )
+
+
+@router.get("/source-registry", response_model=list[DataSourceStatusOut])
+def get_source_registry(db: Session = Depends(get_db)):
+    """Real per-source record counts and most-recent-observation timestamps,
+    queried live from Argus's own tables — never a fabricated online/offline
+    indicator (see ARGUS_DATA_RESOURCES.md #13's "Sources online: N/M"
+    example, reinterpreted honestly as "records held per source")."""
+    sources = [
+        ("darkforums", "DarkForums Dataset", "historical", RawPersona.platform == "darkforums_demo_overlay", RawPersona.submitted_at),
+        ("evolution_market", "Evolution Dataset — Market", "historical", RawPersona.platform == "evolution_market", RawPersona.submitted_at),
+        ("evolution_forum", "Evolution Dataset — Forum", "historical", RawPersona.platform == "evolution_forum", RawPersona.submitted_at),
+        ("tor_onionoo", "Tor Onionoo", "continuously_refreshed", None, TorRelay.observed_at),
+        ("misp_circl_osint", "MISP — CIRCL OSINT Feed", "feed", ThreatEvent.source == "misp_circl_osint", ThreatEvent.ingested_at),
+        ("misp_botvrij_osint", "MISP — botvrij.eu OSINT Feed", "feed", ThreatEvent.source == "misp_botvrij_osint", ThreatEvent.ingested_at),
+        ("hibp", "Have I Been Pwned", "api", None, BreachRecord.ingested_at),
+    ]
+
+    out = []
+    for key, label, category, extra_filter, timestamp_col in sources:
+        model = timestamp_col.class_
+        query = db.query(model)
+        if extra_filter is not None:
+            query = query.filter(extra_filter)
+        count = query.count()
+        most_recent = query.order_by(timestamp_col.desc().nullslast()).first()
+        out.append(
+            DataSourceStatusOut(
+                key=key,
+                label=label,
+                category=category,
+                record_count=count,
+                most_recent_at=getattr(most_recent, timestamp_col.key, None) if most_recent else None,
+            )
+        )
+    return out

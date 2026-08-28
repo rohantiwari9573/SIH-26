@@ -14,9 +14,9 @@ export default function IndicatorsView() {
       <div style={{ marginBottom: "1.5rem" }}>
         <h2>Threat Indicators</h2>
         <p className="muted">
-          Real event metadata from CIRCL's public MISP OSINT feed. A feed entry is not proof any
-          specific actor owns or controls what it describes — treat as independent
-          corroborating context only.
+          Real event metadata from public MISP-format OSINT feeds (CIRCL and botvrij.eu). A feed
+          entry is not proof any specific actor owns or controls what it describes — treat as
+          independent corroborating context only.
         </p>
       </div>
       <div className="section-card">
@@ -31,6 +31,7 @@ export default function IndicatorsView() {
             <thead>
               <tr>
                 <th>Event</th>
+                <th>Feed</th>
                 <th>Org</th>
                 <th>Date</th>
                 <th>Tags</th>
@@ -40,6 +41,7 @@ export default function IndicatorsView() {
               {events.map((e) => (
                 <tr key={e.event_uuid}>
                   <td>{e.info}</td>
+                  <td>{e.source === "misp_botvrij_osint" ? "botvrij.eu" : "CIRCL"}</td>
                   <td>{e.org_name ?? "—"}</td>
                   <td>{e.event_date ?? "—"}</td>
                   <td>

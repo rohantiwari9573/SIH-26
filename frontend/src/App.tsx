@@ -9,6 +9,7 @@ import InfrastructureView from "./InfrastructureView";
 import IndicatorsView from "./IndicatorsView";
 import TimelineView from "./TimelineView";
 import AttributionView from "./AttributionView";
+import SourcesView from "./SourcesView";
 import NotAvailableView from "./NotAvailableView";
 import Sidebar from "./Sidebar";
 import { EyeIcon, LogOutIcon, PlusIcon } from "./icons";
@@ -32,10 +33,6 @@ export type View =
   | { name: "settings" };
 
 const NOT_AVAILABLE_COPY: Partial<Record<View["name"], { title: string; reason: string }>> = {
-  sources: {
-    title: "Sources & Feeds",
-    reason: "No data-source registry exists yet — there's nothing to configure or display.",
-  },
   "hidden-services": {
     title: "Hidden Services",
     reason: "Covered today under Infrastructure findings on each actor's profile page; a dedicated cross-actor view isn't built yet.",
@@ -127,6 +124,7 @@ export default function App() {
           {view.name === "attribution" && <AttributionView onSelectActor={selectActor} />}
           {view.name === "timeline" && <TimelineView onSelectActor={selectActor} />}
           {view.name === "indicators" && <IndicatorsView />}
+          {view.name === "sources" && <SourcesView />}
           {NOT_AVAILABLE_COPY[view.name] && (
             <NotAvailableView
               title={NOT_AVAILABLE_COPY[view.name]!.title}

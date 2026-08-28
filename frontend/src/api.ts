@@ -358,4 +358,29 @@ export async function getThreatEvents(limit = 50): Promise<ThreatEvent[]> {
   return request<ThreatEvent[]>(`/api/dashboard/threat-events?limit=${limit}`);
 }
 
+export interface BreachRecord {
+  name: string;
+  domain: string | null;
+  breach_date: string | null;
+  pwn_count: number;
+  data_classes: string[];
+  is_verified: boolean;
+}
+
+export interface DataSourceStatus {
+  key: string;
+  label: string;
+  category: "historical" | "continuously_refreshed" | "feed" | "api";
+  record_count: number;
+  most_recent_at: string | null;
+}
+
+export async function getBreachRecords(limit = 50): Promise<BreachRecord[]> {
+  return request<BreachRecord[]>(`/api/dashboard/breaches?limit=${limit}`);
+}
+
+export async function getSourceRegistry(): Promise<DataSourceStatus[]> {
+  return request<DataSourceStatus[]>("/api/dashboard/source-registry");
+}
+
 export { ApiError };
