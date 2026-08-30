@@ -23,7 +23,13 @@ from app.models.actor import (
     RawPersona,
     StyleProfile,
 )
+from app.models.external import CorrelationEvidence
 from app.services.attribution import build_clusters
+from app.services.correlation import (
+    correlate_hibp_breaches,
+    correlate_misp_indicators,
+    correlate_tor_relays,
+)
 from app.services.graph.neo4j_client import get_neo4j_client
 from app.services.graph.relationship_mapper import ingest_marketplace_record
 from app.services.stylometry.features import extract_features
@@ -88,6 +94,7 @@ def run_full_analysis(
                 "pgp_key": persona.get("pgp_key"),
                 "wallet": persona.get("wallet"),
                 "vouched_by": persona.get("vouched_by", []),
+                "onion_address": persona.get("onion_address"),
             }
         )
 
@@ -110,6 +117,13 @@ def run_full_analysis(
     personas_by_key = {(p["username"], p["platform"]): p for p in personas}
 
     # Derived tables are rebuilt from scratch each run — see module docstring.
+    # CorrelationEvidence must go first: it FK-references infra_findings/
+    # actors with no DB-level cascade, so deleting those first would crash
+    # with a ForeignKeyViolation the moment any correlation match exists.
+    # It's regenerated a few lines down anyway (correlate_* runs again
+    # below), so dropping it here is consistent with every other derived
+    # table's "rebuilt fresh each run" behavior, not a data-loss risk.
+    db.query(CorrelationEvidence).delete()
     db.query(StyleProfile).delete()
     db.query(InfraFinding).delete()
     db.query(AttributionEdge).delete()
@@ -188,6 +202,17 @@ def run_full_analysis(
             )
 
         persisted_actors.append(actor)
+
+    # Deterministic correlation against the four "live/feed" sources (Tor
+    # Onionoo, both MISP feeds, HIBP) — see app.services.correlation. Runs
+    # in the same session/transaction as everything above (autoflush makes
+    # the InfraFinding rows just added visible to its queries) so a fresh
+    # infra leak is checked against already-ingested external intel
+    # immediately, not on some separate schedule. Deliberately does NOT
+    # touch confidence/scoring — see that module's docstring.
+    correlate_tor_relays(db)
+    correlate_misp_indicators(db)
+    correlate_hibp_breaches(db)
 
     db.commit()
     return persisted_actors

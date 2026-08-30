@@ -88,3 +88,20 @@ class ActorSearchResult(BaseModel):
     label: str
     confidence_score: float
     matched_identifier: str | None = None
+
+
+class CorrelationEvidenceOut(BaseModel):
+    """One deterministic match between a live/feed source and this actor's
+    known infrastructure — see app.services.correlation. Enrichment, not an
+    attribution signal: never fed into confidence_score."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    source: str
+    source_record_id: str
+    evidence_type: str
+    matched_value: str
+    description: str
+    observed_at: datetime | None
+    ingested_at: datetime

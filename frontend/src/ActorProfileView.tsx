@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
-import { ActorProfile, ApiError, downloadExport, getActorProfile } from "./api";
+import {
+  ActorProfile,
+  ApiError,
+  CorrelationEvidence,
+  downloadExport,
+  getActorEvidence,
+  getActorProfile,
+} from "./api";
 import ConfidenceBadge from "./ConfidenceBadge";
 import GraphView from "./GraphView";
 import { SkeletonBlock } from "./Skeleton";
@@ -29,6 +36,19 @@ const TYPE_ICON: Record<string, JSX.Element> = {
   pgp_key: <KeyIcon width={13} height={13} />,
 };
 
+const SOURCE_LABELS: Record<string, string> = {
+  tor_onionoo: "Tor Onionoo",
+  misp_circl_osint: "MISP — CIRCL",
+  misp_botvrij_osint: "MISP — botvrij.eu",
+  hibp: "HIBP Breach Directory",
+};
+
+const EVIDENCE_SECTION_LABELS: Record<CorrelationEvidence["evidence_type"], string> = {
+  infrastructure: "Tor Intelligence",
+  threat_indicator: "Threat Intelligence (MISP)",
+  breach_domain: "Breach Intelligence (HIBP)",
+};
+
 export default function ActorProfileView({
   actorId,
   onBack,
@@ -37,14 +57,19 @@ export default function ActorProfileView({
   onBack: () => void;
 }) {
   const [profile, setProfile] = useState<ActorProfile | null>(null);
+  const [evidence, setEvidence] = useState<CorrelationEvidence[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
 
   useEffect(() => {
+    setEvidence(null);
     getActorProfile(actorId)
       .then(setProfile)
       .catch((err) => setError(err instanceof ApiError ? err.message : "Failed to load actor"));
+    getActorEvidence(actorId)
+      .then(setEvidence)
+      .catch(() => setEvidence([]));
   }, [actorId]);
 
   async function handleExport(format: "csv" | "json" | "report") {
@@ -238,6 +263,54 @@ export default function ActorProfileView({
                     </td>
                     <td>{EDGE_TYPE_LABELS[edge.edge_type] ?? edge.edge_type}</td>
                     <td>{(edge.weight * 100).toFixed(0)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </section>
+
+      <section>
+        <div className="section-card">
+          <div className="section-heading">
+            <ServerIcon width={16} height={16} />
+            <h3>Threat &amp; Infrastructure Intelligence</h3>
+            <span className="section-count">{evidence?.length ?? 0}</span>
+          </div>
+          <p className="muted" style={{ marginBottom: "0.75rem" }}>
+            Supporting intelligence only — a deterministic match between this actor's confirmed
+            infrastructure and a live/feed source. It does not affect the attribution confidence
+            above; see each row's source before treating it as anything more than corroborating
+            context.
+          </p>
+          {evidence === null ? (
+            <SkeletonBlock height={80} />
+          ) : evidence.length === 0 ? (
+            <p className="muted">
+              No matches from Tor Onionoo, MISP CIRCL, MISP botvrij.eu, or HIBP against this
+              actor's confirmed infrastructure — the expected result unless a real external
+              record happens to share an IP/domain with it.
+            </p>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Category</th>
+                  <th>Source</th>
+                  <th>Matched value</th>
+                  <th>Description</th>
+                  <th>Observed</th>
+                </tr>
+              </thead>
+              <tbody>
+                {evidence.map((e) => (
+                  <tr key={e.id}>
+                    <td>{EVIDENCE_SECTION_LABELS[e.evidence_type] ?? e.evidence_type}</td>
+                    <td>{SOURCE_LABELS[e.source] ?? e.source}</td>
+                    <td className="mono">{e.matched_value}</td>
+                    <td className="muted">{e.description}</td>
+                    <td>{e.observed_at ? new Date(e.observed_at).toLocaleDateString() : "—"}</td>
                   </tr>
                 ))}
               </tbody>

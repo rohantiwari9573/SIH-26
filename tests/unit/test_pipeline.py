@@ -5,12 +5,12 @@ than either caller individually.
 """
 from unittest.mock import MagicMock
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 import app.services.pipeline as pipeline
 from app.db.base import Base
-from app.models.actor import Actor, Identifier, RawPersona
+from app.models.actor import Actor, Identifier, InfraFinding, RawPersona
 
 
 def _session(tmp_path):
@@ -100,6 +100,58 @@ def test_run_full_analysis_is_idempotent_on_rerun(tmp_path, monkeypatch):
 
     assert db.query(Actor).count() == 1
     assert db.query(Identifier).count() == 1
+
+
+def test_rerun_does_not_crash_when_correlation_evidence_references_infra_finding(
+    tmp_path, monkeypatch
+):
+    """Regression test: CorrelationEvidence.infra_finding_id/actor_id FK-
+    reference infra_findings/actors with no DB-level cascade. The bulk
+    `db.query(InfraFinding).delete()` / `db.query(Actor).delete()` calls
+    below are raw-SQL deletes that bypass ORM relationship cascades, so
+    without explicitly clearing CorrelationEvidence first, this crashed
+    with a real ForeignKeyViolation the moment any correlation match
+    existed and a second lead was submitted — reproduced live against
+    Postgres before this test was written."""
+    from app.models.external import CorrelationEvidence
+
+    _mock_neo4j(monkeypatch)
+    db = _session(tmp_path)
+
+    db.add(
+        RawPersona(
+            username="leaky_vendor",
+            platform="platform_1",
+            onion_address="leaky.onion",
+        )
+    )
+    db.commit()
+
+    pipeline.run_full_analysis(db)
+
+    finding = db.query(InfraFinding).one()
+    actor = db.query(Actor).one()
+    db.add(
+        CorrelationEvidence(
+            source="hibp",
+            source_record_id="TestBreach",
+            evidence_type="breach_domain",
+            matched_value="leaky.example.com",
+            actor_id=actor.id,
+            infra_finding_id=finding.id,
+            description="manufactured for regression test",
+        )
+    )
+    db.commit()
+
+    # SQLite doesn't enforce foreign keys by default (unlike the real
+    # Postgres this bug was actually reproduced against) — turn it on for
+    # this session's connection so this test is a genuine regression guard
+    # rather than one that would pass even without the fix in pipeline.py.
+    db.execute(text("PRAGMA foreign_keys=ON"))
+
+    # Must not raise IntegrityError/ForeignKeyViolation.
+    pipeline.run_full_analysis(db)
 
 
 def test_same_username_on_different_platforms_are_kept_as_distinct_personas(tmp_path, monkeypatch):

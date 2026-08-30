@@ -132,7 +132,7 @@ def test_actor_graph_endpoint(client, monkeypatch):
             }
         ],
     }
-    monkeypatch.setattr(actors_route, "get_actor_graph", lambda values: fake_graph)
+    monkeypatch.setattr(actors_route, "get_actor_graph", lambda values, depth=1: fake_graph)
 
     response = test_client.get(f"/api/actors/{actor_id}/graph", headers=headers)
     assert response.status_code == 200
@@ -140,6 +140,66 @@ def test_actor_graph_endpoint(client, monkeypatch):
     assert len(body["nodes"]) == 2
     assert len(body["edges"]) == 1
     assert body["edges"][0]["relationship"] == "USES_WALLET"
+
+
+def test_actor_graph_depth_param_is_forwarded_and_clamped(client, monkeypatch):
+    """depth is clamped to [1,3] server-side — an investigative tool, not an
+    invitation to pull an unbounded subgraph."""
+    test_client, SessionLocal = client
+    headers = _auth_headers(test_client)
+    actor_id = _seed_actor(SessionLocal)
+
+    seen_depth = {}
+
+    def fake_get_actor_graph(values, depth=1):
+        seen_depth["value"] = depth
+        return {"nodes": [], "edges": []}
+
+    monkeypatch.setattr(actors_route, "get_actor_graph", fake_get_actor_graph)
+
+    test_client.get(f"/api/actors/{actor_id}/graph?depth=2", headers=headers)
+    assert seen_depth["value"] == 2
+
+    test_client.get(f"/api/actors/{actor_id}/graph?depth=99", headers=headers)
+    assert seen_depth["value"] == 3
+
+
+def test_actor_evidence_endpoint_returns_correlation_evidence(client):
+    """CorrelationEvidence (app.services.correlation) surfaced per-actor,
+    scoped to that actor only — the endpoint the actor profile's Threat &
+    Infrastructure Intelligence section reads from."""
+    test_client, SessionLocal = client
+    headers = _auth_headers(test_client)
+    actor_id = _seed_actor(SessionLocal)
+
+    db = SessionLocal()
+    import uuid as uuid_mod
+
+    from app.models.actor import InfraFinding
+    from app.models.external import CorrelationEvidence
+
+    actor_uuid = uuid_mod.UUID(actor_id)
+    finding = db.query(InfraFinding).filter(InfraFinding.actor_id == actor_uuid).first()
+    db.add(
+        CorrelationEvidence(
+            source="hibp",
+            source_record_id="ExampleBreach",
+            evidence_type="breach_domain",
+            matched_value="mail.realcompany-demo.example",
+            actor_id=actor_uuid,
+            infra_finding_id=finding.id,
+            description="test evidence row",
+        )
+    )
+    db.commit()
+    db.close()
+
+    response = test_client.get(f"/api/actors/{actor_id}/evidence", headers=headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["source"] == "hibp"
+    assert body[0]["evidence_type"] == "breach_domain"
 
 
 def test_actor_endpoints_require_auth(client):

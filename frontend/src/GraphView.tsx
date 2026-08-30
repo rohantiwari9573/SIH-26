@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ActorGraph, ApiError, getActorGraph } from "./api";
 import { computeLayout } from "./forceLayout";
-import { AlertIcon, KeyIcon, UserIcon, WalletIcon } from "./icons";
+import { AlertIcon, KeyIcon, NetworkIcon, ServerIcon, UserIcon, WalletIcon } from "./icons";
 import { SkeletonBlock } from "./Skeleton";
 
 const WIDTH = 640;
@@ -10,12 +10,15 @@ const NODE_COLORS: Record<string, string> = {
   username: "var(--type-username)",
   wallet: "var(--type-wallet)",
   pgp_key: "var(--type-pgp_key)",
+  onion_address: "var(--type-onion_address)",
 };
 
 const LEGEND_ITEMS: { type: string; label: string; icon: JSX.Element }[] = [
   { type: "username", label: "username", icon: <UserIcon width={11} height={11} /> },
   { type: "wallet", label: "wallet", icon: <WalletIcon width={11} height={11} /> },
   { type: "pgp_key", label: "PGP key", icon: <KeyIcon width={11} height={11} /> },
+  { type: "onion_address", label: "infra leak", icon: <ServerIcon width={11} height={11} /> },
+  { type: "corr:*", label: "external intel match", icon: <NetworkIcon width={11} height={11} /> },
 ];
 
 /** Relationship labels are shown on hover (native <title> tooltip) rather
@@ -27,21 +30,62 @@ const EDGE_COLORS: Record<string, string> = {
   USES_WALLET: "var(--type-wallet)",
   USES_KEY: "var(--type-pgp_key)",
   VOUCHES_FOR: "var(--accent)",
+  RELATED_TO: "var(--type-onion_address)",
+  MATCHES: "var(--low)",
 };
+
+const TYPE_LABELS: Record<string, string> = {
+  username: "Username",
+  wallet: "Wallet address",
+  pgp_key: "PGP key",
+  onion_address: "Onion address (confirmed infra leak)",
+};
+
+// Correlation nodes (app.services.correlation) are typed "corr:<source>" —
+// one dynamic prefix rather than a fixed set, so they're handled separately
+// from the static TYPE_LABELS/NODE_COLORS maps above.
+const CORR_PREFIX = "corr:";
+const CORR_SOURCE_LABELS: Record<string, string> = {
+  tor_onionoo: "Tor Onionoo match",
+  misp_circl_osint: "MISP — CIRCL match",
+  misp_botvrij_osint: "MISP — botvrij.eu match",
+  hibp: "HIBP breach match",
+};
+
+function nodeColor(type: string): string {
+  if (type.startsWith(CORR_PREFIX)) return "var(--low)";
+  return NODE_COLORS[type] ?? "var(--low)";
+}
+
+function nodeTypeLabel(type: string): string {
+  if (type.startsWith(CORR_PREFIX)) {
+    const source = type.slice(CORR_PREFIX.length);
+    return CORR_SOURCE_LABELS[source] ?? `External match (${source})`;
+  }
+  return TYPE_LABELS[type] ?? type;
+}
 
 export default function GraphView({ actorId }: { actorId: string }) {
   const [graph, setGraph] = useState<ActorGraph | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [depth, setDepth] = useState(1);
 
   useEffect(() => {
     setGraph(null);
     setError(null);
-    getActorGraph(actorId)
+    setSelected(null);
+    getActorGraph(actorId, depth)
       .then(setGraph)
       .catch((err) =>
         setError(err instanceof ApiError ? err.message : "Failed to load relationship graph")
       );
-  }, [actorId]);
+  }, [actorId, depth]);
+
+  const selectedNode = graph?.nodes.find((n) => n.value === selected) ?? null;
+  const selectedEdges = graph?.edges.filter(
+    (e) => e.source === selected || e.target === selected
+  ) ?? [];
 
   // Scales with node count so a 2-3 node cluster isn't lost in a huge empty
   // canvas, while a busier graph still gets room to breathe.
@@ -85,6 +129,27 @@ export default function GraphView({ actorId }: { actorId: string }) {
 
   return (
     <div>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "0.5rem",
+          padding: "0 1rem 0.75rem",
+          fontSize: "0.8rem",
+        }}
+      >
+        <span className="muted">Depth</span>
+        {[1, 2, 3].map((d) => (
+          <button
+            key={d}
+            className={depth === d ? "btn-secondary" : "btn-ghost"}
+            style={{ padding: "0.15rem 0.6rem", fontSize: "0.8rem" }}
+            onClick={() => setDepth(d)}
+          >
+            {d}
+          </button>
+        ))}
+      </div>
       <svg
         viewBox={`0 0 ${WIDTH} ${height}`}
         className="graph-svg"
@@ -111,16 +176,23 @@ export default function GraphView({ actorId }: { actorId: string }) {
         {graph.nodes.map((node) => {
           const pos = positions.get(node.value);
           if (!pos) return null;
-          const color = NODE_COLORS[node.type] ?? "var(--low)";
+          const color = nodeColor(node.type);
+          const isSelected = node.value === selected;
           return (
             <circle
               key={node.value}
               cx={pos.x}
               cy={pos.y}
-              r={11}
+              r={isSelected ? 14 : 11}
               fill={color}
               className="graph-node"
-            />
+              style={{ cursor: "pointer" }}
+              stroke={isSelected ? "var(--text-primary, #fff)" : "none"}
+              strokeWidth={isSelected ? 2 : 0}
+              onClick={() => setSelected(isSelected ? null : node.value)}
+            >
+              <title>{`${nodeTypeLabel(node.type)}: ${node.value}`}</title>
+            </circle>
           );
         })}
         {graph.edges.map((edge, i) => {
@@ -168,7 +240,7 @@ export default function GraphView({ actorId }: { actorId: string }) {
       <div className="graph-legend">
         {LEGEND_ITEMS.map(({ type, label, icon }) => (
           <span key={type} className="graph-legend-item">
-            <span className="graph-legend-swatch" style={{ background: NODE_COLORS[type] }} />
+            <span className="graph-legend-swatch" style={{ background: nodeColor(type) }} />
             {icon}
             {label}
           </span>
@@ -181,6 +253,40 @@ export default function GraphView({ actorId }: { actorId: string }) {
           </span>
         ))}
       </div>
+      {selectedNode && (
+        <div className="section-card" style={{ margin: "0 1rem 1rem" }}>
+          <div className="section-heading">
+            <span
+              className="graph-legend-swatch"
+              style={{ background: nodeColor(selectedNode.type) }}
+            />
+            <h3 style={{ fontSize: "0.9rem" }}>
+              {nodeTypeLabel(selectedNode.type)}
+            </h3>
+          </div>
+          <p className="mono" style={{ marginBottom: "0.75rem", wordBreak: "break-all" }}>
+            {selectedNode.value}
+          </p>
+          <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem" }}>
+            {selectedEdges.length} relationship{selectedEdges.length === 1 ? "" : "s"} in this
+            actor's graph:
+          </p>
+          <ul style={{ fontSize: "0.85rem", paddingLeft: "1.1rem" }}>
+            {selectedEdges.map((e, i) => {
+              const other = e.source === selected ? e.target : e.source;
+              return (
+                <li key={i}>
+                  <span className="mono">{other}</span>{" "}
+                  <span className="muted">
+                    ({e.relationship.toLowerCase().replace(/_/g, " ")}, weight{" "}
+                    {(e.weight * 100).toFixed(0)}%)
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

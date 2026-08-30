@@ -7,5 +7,14 @@ from app.models.actor import (  # noqa: F401
     RawPersona,
     StyleProfile,
 )
-from app.models.external import BreachRecord, ThreatEvent, TorRelay  # noqa: F401
+from app.models.external import (  # noqa: F401
+    AbuseReport,
+    BreachRecord,
+    CorrelationEvidence,
+    MaliciousUrl,
+    MalwareSample,
+    MispIndicator,
+    ThreatEvent,
+    TorRelay,
+)
 from app.models.user import User  # noqa: F401

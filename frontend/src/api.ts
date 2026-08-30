@@ -162,8 +162,23 @@ export interface ActorGraph {
   edges: GraphEdge[];
 }
 
-export async function getActorGraph(actorId: string): Promise<ActorGraph> {
-  return request<ActorGraph>(`/api/actors/${actorId}/graph`);
+export async function getActorGraph(actorId: string, depth = 1): Promise<ActorGraph> {
+  return request<ActorGraph>(`/api/actors/${actorId}/graph?depth=${depth}`);
+}
+
+export interface CorrelationEvidence {
+  id: string;
+  source: string;
+  source_record_id: string;
+  evidence_type: "infrastructure" | "threat_indicator" | "breach_domain";
+  matched_value: string;
+  description: string;
+  observed_at: string | null;
+  ingested_at: string;
+}
+
+export async function getActorEvidence(actorId: string): Promise<CorrelationEvidence[]> {
+  return request<CorrelationEvidence[]>(`/api/actors/${actorId}/evidence`);
 }
 
 const EXPORT_FILENAMES: Record<"csv" | "json" | "report", (id: string) => string> = {
@@ -373,6 +388,7 @@ export interface DataSourceStatus {
   category: "historical" | "continuously_refreshed" | "feed" | "api";
   record_count: number;
   most_recent_at: string | null;
+  configured: boolean;
 }
 
 export async function getBreachRecords(limit = 50): Promise<BreachRecord[]> {
