@@ -2,11 +2,14 @@ import { useEffect, useState } from "react";
 import {
   ActorProfile,
   ApiError,
+  AttributionBreakdown,
   CorrelationEvidence,
   downloadExport,
+  getActorAttributionBreakdown,
   getActorEvidence,
   getActorProfile,
 } from "./api";
+import Badge from "./Badge";
 import ConfidenceBadge from "./ConfidenceBadge";
 import GraphView from "./GraphView";
 import { SkeletonBlock } from "./Skeleton";
@@ -49,6 +52,24 @@ const EVIDENCE_SECTION_LABELS: Record<CorrelationEvidence["evidence_type"], stri
   breach_domain: "Breach Intelligence (HIBP)",
 };
 
+// Every correlation-evidence source is a real live/feed intelligence fetch
+// (see app.services.correlation) — always LIVE, never historical/synthetic.
+// Identifier source_platform values, by contrast, mix historical datasets
+// (evolution_market, darkforums_demo_overlay) with Argus's own controlled
+// demo platforms (mock_marketplace_*) — see HISTORICAL_PLATFORMS below.
+const HISTORICAL_PLATFORMS = new Set(["evolution_market", "evolution_forum", "darkforums_demo_overlay"]);
+
+function platformBadgeVariant(platform: string): "historical" | "synthetic" {
+  return HISTORICAL_PLATFORMS.has(platform) ? "historical" : "synthetic";
+}
+
+function confidenceBucket(score: number): string {
+  if (score >= 0.7) return "High confidence";
+  if (score >= 0.4) return "Medium confidence";
+  if (score > 0) return "Low confidence";
+  return "No linking evidence yet";
+}
+
 export default function ActorProfileView({
   actorId,
   onBack,
@@ -58,18 +79,23 @@ export default function ActorProfileView({
 }) {
   const [profile, setProfile] = useState<ActorProfile | null>(null);
   const [evidence, setEvidence] = useState<CorrelationEvidence[] | null>(null);
+  const [breakdown, setBreakdown] = useState<AttributionBreakdown | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
 
   useEffect(() => {
     setEvidence(null);
+    setBreakdown(null);
     getActorProfile(actorId)
       .then(setProfile)
       .catch((err) => setError(err instanceof ApiError ? err.message : "Failed to load actor"));
     getActorEvidence(actorId)
       .then(setEvidence)
       .catch(() => setEvidence([]));
+    getActorAttributionBreakdown(actorId)
+      .then(setBreakdown)
+      .catch(() => setBreakdown(null));
   }, [actorId]);
 
   async function handleExport(format: "csv" | "json" | "report") {
@@ -122,11 +148,58 @@ export default function ActorProfileView({
           <div className="profile-subtitle">
             {profile.identifiers.length} identifier{profile.identifiers.length === 1 ? "" : "s"} ·
             {" "}
-            last updated {new Date(profile.updated_at).toLocaleString()}
+            last observed {new Date(profile.updated_at).toLocaleString()}
           </div>
         </div>
-        <ConfidenceBadge score={profile.confidence_score} />
+        <div style={{ textAlign: "right" }}>
+          <ConfidenceBadge score={profile.confidence_score} />
+          <div className="muted" style={{ fontSize: "0.78rem", marginTop: "0.2rem" }}>
+            {confidenceBucket(profile.confidence_score)}
+          </div>
+        </div>
       </div>
+
+      <section>
+        <div className="section-card">
+          <div className="section-heading">
+            <LinkIcon width={16} height={16} />
+            <h3>Why this attribution?</h3>
+          </div>
+          {breakdown === null ? (
+            <SkeletonBlock height={90} />
+          ) : (
+            <>
+              <div className="signal-list">
+                {breakdown.signals.map((s) => (
+                  <div key={s.label} className="signal-row">
+                    <span className="signal-label">{s.label}</span>
+                    {s.available ? (
+                      <>
+                        <div className="signal-bar">
+                          <div className="signal-bar-fill" style={{ width: `${s.value * 100}%` }} />
+                        </div>
+                        <span className="signal-value">{(s.value * 100).toFixed(0)}%</span>
+                      </>
+                    ) : (
+                      <span className="muted" style={{ fontSize: "0.8rem" }}>
+                        Not enough evidence
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: "0.75rem", fontSize: "0.85rem" }}>
+                <span className="muted">
+                  Evidence items: <strong>{breakdown.evidence_count}</strong>
+                </span>
+                <span className="muted">
+                  Sources: {breakdown.sources.length > 0 ? breakdown.sources.join(", ") : "—"}
+                </span>
+              </div>
+            </>
+          )}
+        </div>
+      </section>
 
       <div className="export-bar">
         {(["csv", "json", "report"] as const).map((format) => (
@@ -180,7 +253,10 @@ export default function ActorProfileView({
                       </span>
                     </td>
                     <td className="mono">{ident.value}</td>
-                    <td>{ident.source_platform}</td>
+                    <td>
+                      {ident.source_platform}{" "}
+                      <Badge variant={platformBadgeVariant(ident.source_platform)} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -227,7 +303,7 @@ export default function ActorProfileView({
             <NetworkIcon width={16} height={16} />
             <h3>Relationship graph</h3>
           </div>
-          <GraphView actorId={actorId} />
+          <GraphView actorId={actorId} profile={profile} evidence={evidence} />
         </div>
       </section>
 
@@ -239,9 +315,16 @@ export default function ActorProfileView({
             <span className="section-count">{profile.attribution_edges.length}</span>
           </div>
           {profile.attribution_edges.length === 0 ? (
-            <p className="muted">
-              Single-persona actor — no linking evidence to another persona was found.
-            </p>
+            <div>
+              <p style={{ marginBottom: "0.35rem" }}>
+                <strong>No linking evidence found.</strong>
+              </p>
+              <p className="muted">
+                This is currently a single-persona actor. This does not indicate the persona is
+                unimportant — it indicates no shared wallet, PGP key, or stylometric match to
+                another known persona exists in Argus's current dataset.
+              </p>
+            </div>
           ) : (
             <table>
               <thead>
@@ -287,11 +370,17 @@ export default function ActorProfileView({
           {evidence === null ? (
             <SkeletonBlock height={80} />
           ) : evidence.length === 0 ? (
-            <p className="muted">
-              No matches from Tor Onionoo, MISP CIRCL, MISP botvrij.eu, or HIBP against this
-              actor's confirmed infrastructure — the expected result unless a real external
-              record happens to share an IP/domain with it.
-            </p>
+            <div>
+              <p style={{ marginBottom: "0.35rem" }}>
+                <strong>No correlations found.</strong>
+              </p>
+              <p className="muted">
+                No deterministic relationship was found between this actor's confirmed
+                infrastructure and Tor Onionoo, MISP CIRCL, MISP botvrij.eu, or HIBP. This does
+                not indicate absence of threat activity — it indicates that no supported
+                observable (shared IP, domain, or hostname) matched the current Argus dataset.
+              </p>
+            </div>
           ) : (
             <table>
               <thead>
@@ -307,7 +396,9 @@ export default function ActorProfileView({
                 {evidence.map((e) => (
                   <tr key={e.id}>
                     <td>{EVIDENCE_SECTION_LABELS[e.evidence_type] ?? e.evidence_type}</td>
-                    <td>{SOURCE_LABELS[e.source] ?? e.source}</td>
+                    <td>
+                      {SOURCE_LABELS[e.source] ?? e.source} <Badge variant="live" />
+                    </td>
                     <td className="mono">{e.matched_value}</td>
                     <td className="muted">{e.description}</td>
                     <td>{e.observed_at ? new Date(e.observed_at).toLocaleDateString() : "—"}</td>

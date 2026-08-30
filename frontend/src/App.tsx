@@ -10,6 +10,7 @@ import IndicatorsView from "./IndicatorsView";
 import TimelineView from "./TimelineView";
 import AttributionView from "./AttributionView";
 import SourcesView from "./SourcesView";
+import DemoScenarioView from "./DemoScenarioView";
 import NotAvailableView from "./NotAvailableView";
 import Sidebar from "./Sidebar";
 import { EyeIcon, LogOutIcon, PlusIcon } from "./icons";
@@ -24,6 +25,7 @@ export type View =
   | { name: "timeline" }
   | { name: "indicators" }
   | { name: "sources" }
+  | { name: "demo" }
   | { name: "hidden-services" }
   | { name: "marketplaces" }
   | { name: "forums" }
@@ -125,6 +127,7 @@ export default function App() {
           {view.name === "timeline" && <TimelineView onSelectActor={selectActor} />}
           {view.name === "indicators" && <IndicatorsView />}
           {view.name === "sources" && <SourcesView />}
+          {view.name === "demo" && <DemoScenarioView onSelectActor={selectActor} />}
           {NOT_AVAILABLE_COPY[view.name] && (
             <NotAvailableView
               title={NOT_AVAILABLE_COPY[view.name]!.title}

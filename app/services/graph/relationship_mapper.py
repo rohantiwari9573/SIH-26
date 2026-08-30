@@ -63,11 +63,25 @@ def find_related_identifiers(value: str, depth: int = 2) -> list[dict]:
     return client.get_connected_component(value, depth=depth)
 
 
-def get_actor_graph(identifier_values: list[str], depth: int = 1) -> dict:
+def get_actor_graph(
+    identifier_values: list[str],
+    depth: int = 1,
+    entity_types: list[str] | None = None,
+    relationship_types: list[str] | None = None,
+    source: str | None = None,
+) -> dict:
     """Nodes + edges for the dashboard's graph view, seeded from an actor's
     known identifiers (not just one) so the whole cluster's neighborhood shows
-    up, not just whatever one node happens to be reachable from."""
+    up, not just whatever one node happens to be reachable from. Filters are
+    forwarded to Neo4jClient.get_subgraph, which applies them as real Cypher
+    WHERE clauses — see that method's docstring."""
     if not identifier_values:
         return {"nodes": [], "edges": []}
     client = get_neo4j_client()
-    return client.get_subgraph(identifier_values, depth=depth)
+    return client.get_subgraph(
+        identifier_values,
+        depth=depth,
+        entity_types=entity_types,
+        relationship_types=relationship_types,
+        source=source,
+    )

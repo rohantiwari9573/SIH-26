@@ -69,6 +69,7 @@ class ActorProfileOut(BaseModel):
 class GraphNode(BaseModel):
     type: str
     value: str
+    source_platform: str | None = None
 
 
 class GraphEdge(BaseModel):
@@ -81,6 +82,8 @@ class GraphEdge(BaseModel):
 class ActorGraphOut(BaseModel):
     nodes: list[GraphNode]
     edges: list[GraphEdge]
+    node_count: int
+    edge_count: int
 
 
 class ActorSearchResult(BaseModel):
@@ -88,6 +91,26 @@ class ActorSearchResult(BaseModel):
     label: str
     confidence_score: float
     matched_identifier: str | None = None
+
+
+class AttributionSignal(BaseModel):
+    label: str
+    value: float  # 0-1
+    weight: float  # 0-1, from app.services.scoring.WEIGHTS
+    available: bool = True  # False when there's genuinely no signal to report
+
+
+class AttributionBreakdownOut(BaseModel):
+    """Explains confidence_score for one actor — the same three-signal
+    computation dashboard.py's get_top_link already does for the single
+    highest-confidence actor, generalized to any actor_id. Values are real
+    aggregates over that actor's own AttributionEdge rows (see
+    app.services.attribution/pipeline), never fabricated to make a UI look
+    populated."""
+
+    signals: list[AttributionSignal]
+    evidence_count: int
+    sources: list[str]
 
 
 class CorrelationEvidenceOut(BaseModel):

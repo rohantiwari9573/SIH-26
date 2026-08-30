@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { BreachRecord, DataSourceStatus, getBreachRecords, getSourceRegistry } from "./api";
+import Badge from "./Badge";
 import { SkeletonRows } from "./Skeleton";
 
 const CATEGORY_LABELS: Record<DataSourceStatus["category"], string> = {
@@ -38,22 +39,25 @@ const HIBP_PER_EMAIL_NOTE = {
     "requires a paid HIBP key (HIBP_API_KEY) — only the public breach directory below is used",
 };
 
-function SourceTable({ sources }: { sources: DataSourceStatus[] }) {
+function SourceTable({ sources, live }: { sources: DataSourceStatus[]; live: boolean }) {
   return (
     <table>
       <thead>
         <tr>
           <th>Source</th>
+          <th>Status</th>
+          <th>Records</th>
+          <th>Last Sync</th>
           <th>Type</th>
-          <th>Records held</th>
-          <th>Last successful sync</th>
         </tr>
       </thead>
       <tbody>
         {sources.map((s) => (
           <tr key={s.key}>
             <td>{s.label}</td>
-            <td>{CATEGORY_LABELS[s.category]}</td>
+            <td>
+              <Badge variant={live ? "live" : "historical"} label={live ? "LIVE" : "INGESTED"} />
+            </td>
             <td>{s.record_count.toLocaleString()}</td>
             <td>
               {s.record_count === 0
@@ -62,6 +66,7 @@ function SourceTable({ sources }: { sources: DataSourceStatus[] }) {
                 ? new Date(s.most_recent_at).toLocaleString()
                 : "—"}
             </td>
+            <td>{CATEGORY_LABELS[s.category]}</td>
           </tr>
         ))}
       </tbody>
@@ -104,7 +109,7 @@ export default function SourcesView() {
           <h3>Live / Refreshable Sources</h3>
           {registry && <span className="section-count">{live.length}</span>}
         </div>
-        {registry === null ? <SkeletonRows count={4} /> : <SourceTable sources={live} />}
+        {registry === null ? <SkeletonRows count={4} /> : <SourceTable sources={live} live />}
       </div>
 
       <div className="section-card" style={{ marginBottom: "1.5rem" }}>
@@ -112,7 +117,11 @@ export default function SourcesView() {
           <h3>Historical / Ingested Sources</h3>
           {registry && <span className="section-count">{historical.length}</span>}
         </div>
-        {registry === null ? <SkeletonRows count={3} /> : <SourceTable sources={historical} />}
+        {registry === null ? (
+          <SkeletonRows count={3} />
+        ) : (
+          <SourceTable sources={historical} live={false} />
+        )}
       </div>
 
       <div className="section-card" style={{ marginBottom: "1.5rem" }}>

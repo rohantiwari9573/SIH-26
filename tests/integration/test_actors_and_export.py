@@ -132,7 +132,7 @@ def test_actor_graph_endpoint(client, monkeypatch):
             }
         ],
     }
-    monkeypatch.setattr(actors_route, "get_actor_graph", lambda values, depth=1: fake_graph)
+    monkeypatch.setattr(actors_route, "get_actor_graph", lambda values, **kwargs: fake_graph)
 
     response = test_client.get(f"/api/actors/{actor_id}/graph", headers=headers)
     assert response.status_code == 200
@@ -140,6 +140,65 @@ def test_actor_graph_endpoint(client, monkeypatch):
     assert len(body["nodes"]) == 2
     assert len(body["edges"]) == 1
     assert body["edges"][0]["relationship"] == "USES_WALLET"
+    # Counts must reflect the actual returned graph, not be hardcoded.
+    assert body["node_count"] == 2
+    assert body["edge_count"] == 1
+
+
+def test_actor_graph_filters_resolve_ui_categories_to_real_neo4j_values(client, monkeypatch):
+    """entity_types/relationship_types/source are UI-facing category keys
+    (e.g. "wallets,pgp_keys") that must be expanded to the real Neo4j
+    node-type / relationship / source_platform strings before reaching
+    get_actor_graph — never passed through as raw UI labels."""
+    test_client, SessionLocal = client
+    headers = _auth_headers(test_client)
+    actor_id = _seed_actor(SessionLocal)
+
+    seen = {}
+
+    def fake_get_actor_graph(values, depth=1, entity_types=None, relationship_types=None, source=None):
+        seen["entity_types"] = entity_types
+        seen["relationship_types"] = relationship_types
+        seen["source"] = source
+        return {"nodes": [], "edges": []}
+
+    monkeypatch.setattr(actors_route, "get_actor_graph", fake_get_actor_graph)
+
+    test_client.get(
+        f"/api/actors/{actor_id}/graph"
+        "?entity_types=wallets,pgp_keys&relationship_types=financial&source=misp_circl",
+        headers=headers,
+    )
+
+    assert sorted(seen["entity_types"]) == sorted(["wallet", "pgp_key"])
+    assert seen["relationship_types"] == ["USES_WALLET"]
+    assert seen["source"] == "misp_circl_osint"
+
+
+def test_actor_graph_unknown_filter_key_degrades_to_no_filter(client, monkeypatch):
+    """An unrecognized/stale UI category key must not crash the endpoint —
+    it degrades to no filter for that key rather than erroring."""
+    test_client, SessionLocal = client
+    headers = _auth_headers(test_client)
+    actor_id = _seed_actor(SessionLocal)
+
+    seen = {}
+
+    def fake_get_actor_graph(values, depth=1, entity_types=None, relationship_types=None, source=None):
+        seen["entity_types"] = entity_types
+        seen["source"] = source
+        return {"nodes": [], "edges": []}
+
+    monkeypatch.setattr(actors_route, "get_actor_graph", fake_get_actor_graph)
+
+    response = test_client.get(
+        f"/api/actors/{actor_id}/graph?entity_types=not_a_real_category&source=not_a_real_source",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert seen["entity_types"] is None
+    assert seen["source"] is None
 
 
 def test_actor_graph_depth_param_is_forwarded_and_clamped(client, monkeypatch):
@@ -151,7 +210,7 @@ def test_actor_graph_depth_param_is_forwarded_and_clamped(client, monkeypatch):
 
     seen_depth = {}
 
-    def fake_get_actor_graph(values, depth=1):
+    def fake_get_actor_graph(values, depth=1, **kwargs):
         seen_depth["value"] = depth
         return {"nodes": [], "edges": []}
 
@@ -200,6 +259,46 @@ def test_actor_evidence_endpoint_returns_correlation_evidence(client):
     assert len(body) == 1
     assert body[0]["source"] == "hibp"
     assert body[0]["evidence_type"] == "breach_domain"
+
+
+def test_actor_attribution_breakdown_reflects_real_edges(client):
+    """Relationship/infra signals report a real 0%/100%, but stylometry is
+    marked unavailable (not a fabricated 0%) when this actor has no
+    stylometry edge at all — see AttributionSignal.available."""
+    test_client, SessionLocal = client
+    headers = _auth_headers(test_client)
+    actor_id = _seed_actor(SessionLocal)
+
+    from app.models.actor import AttributionEdge
+
+    db = SessionLocal()
+    import uuid as uuid_mod
+
+    db.add(
+        AttributionEdge(
+            actor_id=uuid_mod.UUID(actor_id),
+            username_a="shadow_vendor",
+            platform_a="mock_marketplace_1",
+            username_b="nightowl_88",
+            platform_b="mock_marketplace_2",
+            edge_type="shared_wallet",
+            weight=1.0,
+        )
+    )
+    db.commit()
+    db.close()
+
+    response = test_client.get(f"/api/actors/{actor_id}/attribution-breakdown", headers=headers)
+    assert response.status_code == 200
+    body = response.json()
+
+    by_label = {s["label"]: s for s in body["signals"]}
+    assert by_label["Relationship evidence"]["value"] == 1.0
+    assert by_label["Relationship evidence"]["available"] is True
+    assert by_label["Infrastructure evidence"]["value"] == 1.0
+    assert by_label["Stylometric evidence"]["available"] is False
+    assert body["evidence_count"] == 1
+    assert "mock_marketplace_1" in body["sources"]
 
 
 def test_actor_endpoints_require_auth(client):

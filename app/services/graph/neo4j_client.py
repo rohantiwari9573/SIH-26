@@ -101,10 +101,28 @@ class Neo4jClient:
             result = session.run(query, value=value)
             return [dict(record) for record in result]
 
-    def get_subgraph(self, values: list[str], depth: int = 1) -> dict:
+    def get_subgraph(
+        self,
+        values: list[str],
+        depth: int = 1,
+        entity_types: list[str] | None = None,
+        relationship_types: list[str] | None = None,
+        source: str | None = None,
+    ) -> dict:
         """Nodes + edges reachable within `depth` hops of any of `values` — the
         shape a UI needs to actually draw the relationship graph, not just list
-        connected identifiers."""
+        connected identifiers.
+
+        entity_types/relationship_types/source are applied as real Cypher WHERE
+        clauses (not post-hoc filtering of an already-fetched result, and
+        definitely not CSS-hiding in the frontend) — see
+        app/api/routes/actors.py's ENTITY_TYPE_GROUPS/RELATIONSHIP_TYPE_GROUPS
+        for how UI category checkboxes map to these real node `type` /
+        relationship `relationship` values. None means "no filter" for that
+        dimension. Filtering by entity_types can legitimately remove a root
+        identifier node too (e.g. filtering to just "Indicators" on an actor
+        with no correlation evidence returns an empty graph) — that's honest
+        investigator behavior, not a bug."""
         node_query = f"""
         UNWIND $values AS v
         MATCH (start:Identifier {{value: v}})
@@ -113,21 +131,34 @@ class Neo4jClient:
         UNWIND starts + others AS n
         WITH DISTINCT n
         WHERE n IS NOT NULL
-        RETURN n.type AS type, n.value AS value
+          AND ($entity_types IS NULL OR n.type IN $entity_types)
+          AND ($source IS NULL OR n.source_platform = $source)
+        RETURN n.type AS type, n.value AS value, n.source_platform AS source_platform
         """
         edge_query = """
         UNWIND $values AS v
         MATCH (a:Identifier {value: v})-[r:LINKED_TO]->(b:Identifier)
         WHERE b.value IN $node_values
+          AND ($relationship_types IS NULL OR r.relationship IN $relationship_types)
         RETURN DISTINCT a.value AS source, b.value AS target,
                r.relationship AS relationship, r.weight AS weight
         """
         with self._driver.session() as session:
-            nodes = [dict(record) for record in session.run(node_query, values=values)]
+            nodes = [
+                dict(record)
+                for record in session.run(
+                    node_query, values=values, entity_types=entity_types, source=source
+                )
+            ]
             node_values = [n["value"] for n in nodes]
             edges = [
                 dict(record)
-                for record in session.run(edge_query, values=node_values, node_values=node_values)
+                for record in session.run(
+                    edge_query,
+                    values=node_values,
+                    node_values=node_values,
+                    relationship_types=relationship_types,
+                )
             ]
         return {"nodes": nodes, "edges": edges}
 

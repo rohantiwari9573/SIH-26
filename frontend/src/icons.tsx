@@ -39,6 +39,14 @@ export function PlusIcon(props: IconProps) {
   );
 }
 
+export function PlayIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props} fill="currentColor" stroke="none">
+      <path d="M6 4.5v15l14-7.5-14-7.5Z" />
+    </svg>
+  );
+}
+
 export function LogOutIcon(props: IconProps) {
   return (
     <svg {...base} {...props}>

@@ -983,6 +983,50 @@ tbody tr:last-child td {
   display: inline-block;
 }
 
+/* Evidence drawer field lists (GraphView node/edge inspector) */
+.evidence-fields {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 1rem;
+  font-size: 0.82rem;
+}
+
+.evidence-fields dt {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.evidence-fields dd {
+  margin: 0;
+  word-break: break-word;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.badge-live {
+  background: var(--high-muted);
+  color: var(--high);
+}
+
+.badge-historical {
+  background: var(--accent-muted);
+  color: var(--accent-hover);
+}
+
+.badge-synthetic {
+  background: var(--low-muted);
+  color: var(--low);
+}
+
 /* ---------- Misc ---------- */
 
 .spin {

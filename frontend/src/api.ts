@@ -148,6 +148,7 @@ export async function getActorProfile(actorId: string): Promise<ActorProfile> {
 export interface GraphNode {
   type: string;
   value: string;
+  source_platform: string | null;
 }
 
 export interface GraphEdge {
@@ -160,10 +161,25 @@ export interface GraphEdge {
 export interface ActorGraph {
   nodes: GraphNode[];
   edges: GraphEdge[];
+  node_count: number;
+  edge_count: number;
 }
 
-export async function getActorGraph(actorId: string, depth = 1): Promise<ActorGraph> {
-  return request<ActorGraph>(`/api/actors/${actorId}/graph?depth=${depth}`);
+export interface GraphFilters {
+  depth?: number;
+  entityTypes?: string[]; // ENTITY_TYPE_GROUPS keys, see app/api/routes/actors.py
+  relationshipTypes?: string[]; // RELATIONSHIP_TYPE_GROUPS keys
+  source?: string | null; // SOURCE_FILTER_VALUES key
+}
+
+export async function getActorGraph(actorId: string, filters: GraphFilters = {}): Promise<ActorGraph> {
+  const params = new URLSearchParams();
+  params.set("depth", String(filters.depth ?? 1));
+  if (filters.entityTypes?.length) params.set("entity_types", filters.entityTypes.join(","));
+  if (filters.relationshipTypes?.length)
+    params.set("relationship_types", filters.relationshipTypes.join(","));
+  if (filters.source) params.set("source", filters.source);
+  return request<ActorGraph>(`/api/actors/${actorId}/graph?${params.toString()}`);
 }
 
 export interface CorrelationEvidence {
@@ -179,6 +195,23 @@ export interface CorrelationEvidence {
 
 export async function getActorEvidence(actorId: string): Promise<CorrelationEvidence[]> {
   return request<CorrelationEvidence[]>(`/api/actors/${actorId}/evidence`);
+}
+
+export interface AttributionSignal {
+  label: string;
+  value: number;
+  weight: number;
+  available: boolean;
+}
+
+export interface AttributionBreakdown {
+  signals: AttributionSignal[];
+  evidence_count: number;
+  sources: string[];
+}
+
+export async function getActorAttributionBreakdown(actorId: string): Promise<AttributionBreakdown> {
+  return request<AttributionBreakdown>(`/api/actors/${actorId}/attribution-breakdown`);
 }
 
 const EXPORT_FILENAMES: Record<"csv" | "json" | "report", (id: string) => string> = {

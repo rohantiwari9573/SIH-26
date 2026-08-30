@@ -8,6 +8,7 @@ import {
   LinkIcon,
   MessageIcon,
   NetworkIcon,
+  PlayIcon,
   RssIcon,
   ServerIcon,
   SlidersIcon,
@@ -44,6 +45,7 @@ const INTELLIGENCE: NavItem[] = [
   { key: "alerts", label: "Alerts", icon: <FlagIcon width={17} height={17} />, available: false },
   { key: "indicators", label: "Indicators", icon: <NetworkIcon width={17} height={17} />, available: true },
   { key: "reports", label: "Reports", icon: <ClipboardIcon width={17} height={17} />, available: false },
+  { key: "demo", label: "Controlled Demo", icon: <PlayIcon width={17} height={17} />, available: true },
 ];
 
 const SYSTEM: NavItem[] = [
