@@ -12,6 +12,7 @@ def ingest_marketplace_record(record: dict) -> None:
         "pgp_key": "ABCD1234...",
         "wallet": "1A2b3C...",
         "vouched_by": ["other_username"],
+        "onion_address": "abcd1234....onion",  # optional — confirmed infra leak
     }
     """
     client = get_neo4j_client()
@@ -40,6 +41,20 @@ def ingest_marketplace_record(record: dict) -> None:
             "VOUCHES_FOR",
             platform_a=record["platform"],
             platform_b=record["platform"],
+        )
+
+    # Infra-fingerprinting pillar (app.services.infra_scan) previously only
+    # ever reached Postgres (InfraFinding, actor_id FK) and a boolean flag in
+    # scoring — it had no representation in the relationship graph at all, so
+    # an actor tied to a confirmed leak looked identical in Neo4j to one with
+    # no infra evidence. This is what wires it in as a real graph edge.
+    if record.get("onion_address"):
+        client.upsert_identifier("onion_address", record["onion_address"], record["platform"])
+        client.link_identifiers(
+            record["username"],
+            record["onion_address"],
+            "RELATED_TO",
+            platform_a=record["platform"],
         )
 
 

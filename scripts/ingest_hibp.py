@@ -11,7 +11,7 @@ Usage: python scripts/ingest_hibp.py [--limit N]
 """
 import argparse
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
@@ -20,6 +20,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.db.session import SessionLocal  # noqa: E402
 from app.models.external import BreachRecord  # noqa: E402
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
 
 BREACHES_URL = "https://haveibeenpwned.com/api/v3/breaches"
 
@@ -70,6 +74,10 @@ def main(limit: int) -> None:
             existing.pwn_count = b.get("PwnCount", 0)
             existing.data_classes = b.get("DataClasses", [])
             existing.is_verified = bool(b.get("IsVerified", False))
+            # See ingest_onionoo.py's _now() comment — same fix: bump on
+            # every upsert so a re-run against already-known breaches still
+            # advances source-registry's "most recent sync" timestamp.
+            existing.ingested_at = _now()
             upserted += 1
 
         db.commit()

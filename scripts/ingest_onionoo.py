@@ -20,6 +20,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.db.session import SessionLocal  # noqa: E402
 from app.models.external import TorRelay  # noqa: E402
 
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
 ONIONOO_URL = "https://onionoo.torproject.org/details"
 FIELDS = "fingerprint,nickname,or_addresses,country,running,flags,first_seen,last_seen"
 
@@ -56,6 +60,12 @@ def main(limit: int) -> None:
             existing.flags = relay.get("flags", [])
             existing.first_seen = _parse_dt(relay.get("first_seen"))
             existing.last_seen = _parse_dt(relay.get("last_seen"))
+            # Bumped on every upsert, not just insert — otherwise a relay
+            # that already existed keeps showing its *first-ever* ingestion
+            # timestamp forever, and the dashboard's "most recent sync"
+            # (source-registry, ordered by this column) would never reflect
+            # a real re-run that only touched already-known relays.
+            existing.observed_at = _now()
             upserted += 1
 
         db.commit()

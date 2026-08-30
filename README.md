@@ -1,8 +1,8 @@
-# SIH26151 — Dark Web Threat Actor De-anonymization
+# Argus — Dark Web Threat Actor De-anonymization
 
-Prototype for SIH 2026 Problem Statement 26151 (NTRO): a system that links dark-web
-personas to real-world identity/infrastructure using infrastructure fingerprinting,
-relationship-graph analysis, and stylometric behavioral analysis.
+A system that links dark-web personas to real-world identity/infrastructure using
+infrastructure fingerprinting, relationship-graph analysis, and stylometric
+behavioral analysis.
 
 > **Ethics / legal notice**: This project never scrapes live dark-web marketplaces.
 > All analysis runs against synthetic data and a self-hosted mock Tor hidden service

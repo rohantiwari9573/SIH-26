@@ -10,13 +10,22 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
+from app.core.config import settings
 from app.db.session import get_db
 from app.models.actor import Actor, AttributionEdge, Identifier, InfraFinding, RawPersona
-from app.models.external import BreachRecord, ThreatEvent, TorRelay
+from app.models.external import (
+    AbuseReport,
+    BreachRecord,
+    MaliciousUrl,
+    MalwareSample,
+    ThreatEvent,
+    TorRelay,
+)
 from app.schemas.dashboard import (
     BreachRecordOut,
     DashboardStatsOut,
     DataSourceStatusOut,
+    HibpLookupOut,
     InfraFindingRowOut,
     SourceBreakdownItem,
     StatCard,
@@ -26,6 +35,7 @@ from app.schemas.dashboard import (
     TopLinkSignal,
     TorRelayOut,
 )
+from app.services.hibp_lookup import check_email_breaches
 from app.services.scoring import WEIGHTS
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"], dependencies=[Depends(get_current_user)])
@@ -274,7 +284,10 @@ def get_source_registry(db: Session = Depends(get_db)):
     """Real per-source record counts and most-recent-observation timestamps,
     queried live from Argus's own tables — never a fabricated online/offline
     indicator (see ARGUS_DATA_RESOURCES.md #13's "Sources online: N/M"
-    example, reinterpreted honestly as "records held per source")."""
+    example, reinterpreted honestly as "records held per source"). Sources
+    that require a credential Argus doesn't hold (URLhaus, MalwareBazaar,
+    Chainabuse) are still listed, with configured=False and 0 records — a
+    real state, not a hidden gap."""
     sources = [
         ("darkforums", "DarkForums Dataset", "historical", RawPersona.platform == "darkforums_demo_overlay", RawPersona.submitted_at),
         ("evolution_market", "Evolution Dataset — Market", "historical", RawPersona.platform == "evolution_market", RawPersona.submitted_at),
@@ -283,7 +296,15 @@ def get_source_registry(db: Session = Depends(get_db)):
         ("misp_circl_osint", "MISP — CIRCL OSINT Feed", "feed", ThreatEvent.source == "misp_circl_osint", ThreatEvent.ingested_at),
         ("misp_botvrij_osint", "MISP — botvrij.eu OSINT Feed", "feed", ThreatEvent.source == "misp_botvrij_osint", ThreatEvent.ingested_at),
         ("hibp", "Have I Been Pwned", "api", None, BreachRecord.ingested_at),
+        ("urlhaus", "URLhaus", "feed", None, MaliciousUrl.ingested_at),
+        ("malwarebazaar", "MalwareBazaar", "feed", None, MalwareSample.ingested_at),
+        ("chainabuse", "Chainabuse", "api", None, AbuseReport.ingested_at),
     ]
+    configured_flags = {
+        "urlhaus": bool(settings.urlhaus_api_key),
+        "malwarebazaar": bool(settings.malwarebazaar_api_key),
+        "chainabuse": bool(settings.chainabuse_api_key),
+    }
 
     out = []
     for key, label, category, extra_filter, timestamp_col in sources:
@@ -300,6 +321,21 @@ def get_source_registry(db: Session = Depends(get_db)):
                 category=category,
                 record_count=count,
                 most_recent_at=getattr(most_recent, timestamp_col.key, None) if most_recent else None,
+                configured=configured_flags.get(key, True),
             )
         )
     return out
+
+
+@router.get("/hibp-lookup", response_model=HibpLookupOut)
+def hibp_lookup(email: str):
+    """On-demand per-email breach check (distinct from /breaches, the public
+    directory). Returns configured=False rather than fake results when
+    HIBP_API_KEY is unset — see app.services.hibp_lookup."""
+    result = check_email_breaches(email)
+    return HibpLookupOut(
+        configured=result.configured,
+        email=result.email,
+        breach_names=result.breach_names,
+        error=result.error,
+    )

@@ -104,11 +104,21 @@ class BreachRecordOut(BaseModel):
 class DataSourceStatusOut(BaseModel):
     """Real per-source record counts and the timestamp of the most recent
     row Argus actually holds for that source — never a fabricated
-    "online/offline" status. A source with 0 records simply hasn't been
-    ingested yet."""
+    "online/offline" status. A source with 0 records and configured=True
+    simply hasn't been ingested yet; configured=False means no API
+    credential is set at all (see app.core.config), which is a genuinely
+    different state and must not be presented the same way in the UI."""
 
     key: str
     label: str
     category: str  # historical | continuously_refreshed | feed | api
     record_count: int
     most_recent_at: datetime | None
+    configured: bool = True
+
+
+class HibpLookupOut(BaseModel):
+    configured: bool
+    email: str
+    breach_names: list[str] | None = None
+    error: str | None = None
