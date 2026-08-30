@@ -95,7 +95,9 @@ def test_tor_relay_with_no_ip_overlap_creates_no_evidence(tmp_path, monkeypatch)
 def test_misp_domain_indicator_matching_cert_hostname_creates_evidence(tmp_path, monkeypatch):
     _mock_neo4j(monkeypatch)
     db = _session(tmp_path)
-    actor, finding = _actor_with_infra(db, detail={"subject_cn": "real-server.example.com", "san": []})
+    actor, finding = _actor_with_infra(
+        db, detail={"subject_cn": "real-server.example.com", "san": []}
+    )
     db.add(
         MispIndicator(
             event_uuid="evt-1",

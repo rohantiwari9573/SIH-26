@@ -118,7 +118,10 @@ def correlate_tor_relays(db: Session) -> CorrelationResult:
                 evidence_type="infrastructure",
                 matched_value=ip,
                 finding=finding,
-                description=f"Tor relay {relay.nickname} ({relay.fingerprint[:12]}...) shares IP {ip} with a confirmed infra leak.",
+                description=(
+                    f"Tor relay {relay.nickname} ({relay.fingerprint[:12]}...) shares IP "
+                    f"{ip} with a confirmed infra leak."
+                ),
                 observed_at=relay.last_seen,
             ):
                 matches += 1

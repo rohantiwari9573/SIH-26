@@ -80,7 +80,8 @@ class MispIndicator(Base):
     )
     event_uuid: Mapped[str] = mapped_column(String(64), index=True)
     source: Mapped[str] = mapped_column(String(64))  # misp_circl_osint | misp_botvrij_osint
-    indicator_type: Mapped[str] = mapped_column(String(32))  # domain | ip-dst | url | md5 | sha256 | hostname
+    # domain | ip-dst | url | md5 | sha256 | hostname
+    indicator_type: Mapped[str] = mapped_column(String(32))
     value: Mapped[str] = mapped_column(String(1024))
     category: Mapped[str | None] = mapped_column(String(128), nullable=True)
     ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
@@ -109,9 +110,12 @@ class CorrelationEvidence(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    source: Mapped[str] = mapped_column(String(64))  # tor_onionoo | misp_circl_osint | misp_botvrij_osint | hibp
-    source_record_id: Mapped[str] = mapped_column(String(255))  # e.g. relay fingerprint, event_uuid, breach name
-    evidence_type: Mapped[str] = mapped_column(String(64))  # infrastructure | threat_indicator | breach_domain
+    # tor_onionoo | misp_circl_osint | misp_botvrij_osint | hibp
+    source: Mapped[str] = mapped_column(String(64))
+    # e.g. relay fingerprint, event_uuid, breach name
+    source_record_id: Mapped[str] = mapped_column(String(255))
+    # infrastructure | threat_indicator | breach_domain
+    evidence_type: Mapped[str] = mapped_column(String(64))
     matched_value: Mapped[str] = mapped_column(String(1024))  # the exact value that matched
     actor_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("actors.id"), nullable=True

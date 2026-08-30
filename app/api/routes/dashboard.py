@@ -38,7 +38,9 @@ from app.schemas.dashboard import (
 from app.services.hibp_lookup import check_email_breaches
 from app.services.scoring import WEIGHTS
 
-router = APIRouter(prefix="/api/dashboard", tags=["dashboard"], dependencies=[Depends(get_current_user)])
+router = APIRouter(
+    prefix="/api/dashboard", tags=["dashboard"], dependencies=[Depends(get_current_user)]
+)
 
 HIGH_CONFIDENCE_THRESHOLD = 0.7
 
@@ -93,7 +95,9 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
     high_conf_older = high_conf_total - high_conf_recent
 
     return DashboardStatsOut(
-        threat_actors=_stat_card("Threat Actors Identified", actor_total, actor_recent, actor_older),
+        threat_actors=_stat_card(
+            "Threat Actors Identified", actor_total, actor_recent, actor_older
+        ),
         unique_handles=_stat_card("Unique Handles", handle_total, handle_recent, handle_older),
         pgp_keys=_stat_card("PGP Keys", pgp_total, pgp_recent, pgp_older),
         wallets_tracked=_stat_card("Wallets Tracked", wallet_total, wallet_recent, wallet_older),
@@ -120,7 +124,8 @@ def get_dashboard_timeline(limit: int = 20, db: Session = Depends(get_db)):
             )
         )
 
-    for finding in db.query(InfraFinding).order_by(InfraFinding.discovered_at.desc()).limit(limit).all():
+    finding_query = db.query(InfraFinding).order_by(InfraFinding.discovered_at.desc()).limit(limit)
+    for finding in finding_query.all():
         events.append(
             TimelineEventOut(
                 event_type="infra_finding",
@@ -288,13 +293,33 @@ def get_source_registry(db: Session = Depends(get_db)):
     that require a credential Argus doesn't hold (URLhaus, MalwareBazaar,
     Chainabuse) are still listed, with configured=False and 0 records — a
     real state, not a hidden gap."""
+    darkforums_filter = RawPersona.platform == "darkforums_demo_overlay"
+    evo_market_filter = RawPersona.platform == "evolution_market"
+    evo_forum_filter = RawPersona.platform == "evolution_forum"
+    misp_circl_filter = ThreatEvent.source == "misp_circl_osint"
+    misp_botvrij_filter = ThreatEvent.source == "misp_botvrij_osint"
     sources = [
-        ("darkforums", "DarkForums Dataset", "historical", RawPersona.platform == "darkforums_demo_overlay", RawPersona.submitted_at),
-        ("evolution_market", "Evolution Dataset — Market", "historical", RawPersona.platform == "evolution_market", RawPersona.submitted_at),
-        ("evolution_forum", "Evolution Dataset — Forum", "historical", RawPersona.platform == "evolution_forum", RawPersona.submitted_at),
+        (
+            "darkforums", "DarkForums Dataset", "historical",
+            darkforums_filter, RawPersona.submitted_at,
+        ),
+        (
+            "evolution_market", "Evolution Dataset — Market", "historical",
+            evo_market_filter, RawPersona.submitted_at,
+        ),
+        (
+            "evolution_forum", "Evolution Dataset — Forum", "historical",
+            evo_forum_filter, RawPersona.submitted_at,
+        ),
         ("tor_onionoo", "Tor Onionoo", "continuously_refreshed", None, TorRelay.observed_at),
-        ("misp_circl_osint", "MISP — CIRCL OSINT Feed", "feed", ThreatEvent.source == "misp_circl_osint", ThreatEvent.ingested_at),
-        ("misp_botvrij_osint", "MISP — botvrij.eu OSINT Feed", "feed", ThreatEvent.source == "misp_botvrij_osint", ThreatEvent.ingested_at),
+        (
+            "misp_circl_osint", "MISP — CIRCL OSINT Feed", "feed",
+            misp_circl_filter, ThreatEvent.ingested_at,
+        ),
+        (
+            "misp_botvrij_osint", "MISP — botvrij.eu OSINT Feed", "feed",
+            misp_botvrij_filter, ThreatEvent.ingested_at,
+        ),
         ("hibp", "Have I Been Pwned", "api", None, BreachRecord.ingested_at),
         ("urlhaus", "URLhaus", "feed", None, MaliciousUrl.ingested_at),
         ("malwarebazaar", "MalwareBazaar", "feed", None, MalwareSample.ingested_at),
@@ -314,13 +339,16 @@ def get_source_registry(db: Session = Depends(get_db)):
             query = query.filter(extra_filter)
         count = query.count()
         most_recent = query.order_by(timestamp_col.desc().nullslast()).first()
+        most_recent_at = (
+            getattr(most_recent, timestamp_col.key, None) if most_recent else None
+        )
         out.append(
             DataSourceStatusOut(
                 key=key,
                 label=label,
                 category=category,
                 record_count=count,
-                most_recent_at=getattr(most_recent, timestamp_col.key, None) if most_recent else None,
+                most_recent_at=most_recent_at,
                 configured=configured_flags.get(key, True),
             )
         )

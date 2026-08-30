@@ -111,7 +111,7 @@ class AttributionEdge(Base):
     platform_a: Mapped[str] = mapped_column(String(255))
     username_b: Mapped[str] = mapped_column(String(255))
     platform_b: Mapped[str] = mapped_column(String(255))
-    edge_type: Mapped[str] = mapped_column(String(32))  # shared_wallet | shared_pgp_key | stylometry
+    edge_type: Mapped[str] = mapped_column(String(32))  # shared_wallet | shared_pgp_key | stylo
     weight: Mapped[float] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 

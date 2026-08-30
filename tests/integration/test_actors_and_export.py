@@ -156,7 +156,9 @@ def test_actor_graph_filters_resolve_ui_categories_to_real_neo4j_values(client, 
 
     seen = {}
 
-    def fake_get_actor_graph(values, depth=1, entity_types=None, relationship_types=None, source=None):
+    def fake_get_actor_graph(
+        values, depth=1, entity_types=None, relationship_types=None, source=None
+    ):
         seen["entity_types"] = entity_types
         seen["relationship_types"] = relationship_types
         seen["source"] = source
@@ -184,7 +186,9 @@ def test_actor_graph_unknown_filter_key_degrades_to_no_filter(client, monkeypatc
 
     seen = {}
 
-    def fake_get_actor_graph(values, depth=1, entity_types=None, relationship_types=None, source=None):
+    def fake_get_actor_graph(
+        values, depth=1, entity_types=None, relationship_types=None, source=None
+    ):
         seen["entity_types"] = entity_types
         seen["source"] = source
         return {"nodes": [], "edges": []}

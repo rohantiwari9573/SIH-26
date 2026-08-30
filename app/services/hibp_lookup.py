@@ -40,7 +40,9 @@ def check_email_breaches(email: str) -> HibpLookupResult:
     if resp.status_code == 404:
         return HibpLookupResult(configured=True, email=email, breach_names=[])
     if not resp.is_success:
-        return HibpLookupResult(configured=True, email=email, error=f"HIBP returned {resp.status_code}")
+        return HibpLookupResult(
+            configured=True, email=email, error=f"HIBP returned {resp.status_code}"
+        )
 
     breaches = resp.json()
     return HibpLookupResult(
