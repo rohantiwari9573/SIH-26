@@ -59,8 +59,10 @@ export default function DashboardView({ onSelectActor }: { onSelectActor: (id: s
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
   const [sources, setSources] = useState<SourceBreakdownItem[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [retryToken, setRetryToken] = useState(0);
 
   useEffect(() => {
+    setError(null);
     Promise.all([
       getDashboardStats(),
       listActors(),
@@ -77,15 +79,18 @@ export default function DashboardView({ onSelectActor }: { onSelectActor: (id: s
         setTimeline(tl);
         setSources(src);
       })
-      .catch(() => setError("Failed to load dashboard data"));
-  }, []);
+      .catch(() => setError("Unable to load Argus's intelligence overview right now."));
+  }, [retryToken]);
 
   if (error) {
     return (
-      <p className="error">
-        <AlertIcon width={15} height={15} />
-        {error}
-      </p>
+      <div className="panel" style={{ maxWidth: 420, margin: "3rem auto", textAlign: "center" }}>
+        <p className="error" style={{ justifyContent: "center", marginBottom: "1rem" }}>
+          <AlertIcon width={15} height={15} />
+          {error}
+        </p>
+        <button onClick={() => setRetryToken((t) => t + 1)}>Retry</button>
+      </div>
     );
   }
 

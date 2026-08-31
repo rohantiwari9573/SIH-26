@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import get_current_user
 from app.db.session import get_db
-from app.models.actor import Actor, AttributionEdge, Identifier
+from app.models.actor import Actor, Identifier
 from app.models.external import CorrelationEvidence
 from app.schemas.actor import (
     ActorGraphOut,
@@ -15,8 +15,8 @@ from app.schemas.actor import (
     AttributionSignal,
     CorrelationEvidenceOut,
 )
+from app.services.attribution_explain import explain_attribution
 from app.services.graph.relationship_mapper import get_actor_graph
-from app.services.scoring import WEIGHTS
 
 router = APIRouter(prefix="/api/actors", tags=["actors"], dependencies=[Depends(get_current_user)])
 
@@ -179,40 +179,11 @@ def get_actor_attribution_breakdown(actor_id: uuid.UUID, db: Session = Depends(g
     if actor is None:
         raise HTTPException(status_code=404, detail="Actor not found")
 
-    edges = db.query(AttributionEdge).filter(AttributionEdge.actor_id == actor_id).all()
-    max_stylometry = max((e.weight for e in edges if e.edge_type == "stylometry"), default=0.0)
-    has_shared_id = any(e.edge_type.startswith("shared_") for e in edges)
-    has_stylometry_edges = any(e.edge_type == "stylometry" for e in edges)
-
-    correlation_count = (
-        db.query(CorrelationEvidence).filter(CorrelationEvidence.actor_id == actor_id).count()
-    )
-
-    sources = sorted({ident.source_platform for ident in actor.identifiers})
-
+    explanation = explain_attribution(db, actor)
     return AttributionBreakdownOut(
-        signals=[
-            AttributionSignal(
-                label="Relationship evidence",
-                value=1.0 if has_shared_id else 0.0,
-                weight=WEIGHTS["relationship"],
-                available=True,
-            ),
-            AttributionSignal(
-                label="Stylometric evidence",
-                value=max_stylometry,
-                weight=WEIGHTS["stylometry"],
-                available=has_stylometry_edges,
-            ),
-            AttributionSignal(
-                label="Infrastructure evidence",
-                value=1.0 if actor.infra_findings else 0.0,
-                weight=WEIGHTS["infra"],
-                available=True,
-            ),
-        ],
-        evidence_count=len(edges) + correlation_count,
-        sources=sources,
+        signals=[AttributionSignal(**vars(s)) for s in explanation.signals],
+        evidence_count=explanation.evidence_count,
+        sources=explanation.sources,
     )
 
 

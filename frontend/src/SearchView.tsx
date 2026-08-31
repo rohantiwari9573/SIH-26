@@ -13,13 +13,16 @@ export default function SearchView({
   const [results, setResults] = useState<ActorSearchResult[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [retryToken, setRetryToken] = useState(0);
 
   useEffect(() => {
+    setError(null);
+    setLoading(true);
     listActors()
       .then(setResults)
       .catch((err) => setError(err instanceof ApiError ? err.message : "Failed to load actors"))
       .finally(() => setLoading(false));
-  }, []);
+  }, [retryToken]);
 
   async function handleSearch(e: FormEvent) {
     e.preventDefault();
@@ -67,6 +70,9 @@ export default function SearchView({
         <p className="error">
           <AlertIcon width={15} height={15} />
           {error}
+          <button className="btn-ghost" style={{ marginLeft: "0.75rem" }} onClick={() => setRetryToken((t) => t + 1)}>
+            Retry
+          </button>
         </p>
       )}
 

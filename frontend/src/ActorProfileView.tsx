@@ -83,20 +83,27 @@ export default function ActorProfileView({
   const [error, setError] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
+  const [retryToken, setRetryToken] = useState(0);
 
   useEffect(() => {
+    setError(null);
+    setProfile(null);
     setEvidence(null);
     setBreakdown(null);
     getActorProfile(actorId)
       .then(setProfile)
-      .catch((err) => setError(err instanceof ApiError ? err.message : "Failed to load actor"));
+      .catch((err) =>
+        setError(
+          err instanceof ApiError ? err.message : "Unable to load this actor's intelligence."
+        )
+      );
     getActorEvidence(actorId)
       .then(setEvidence)
       .catch(() => setEvidence([]));
     getActorAttributionBreakdown(actorId)
       .then(setBreakdown)
       .catch(() => setBreakdown(null));
-  }, [actorId]);
+  }, [actorId, retryToken]);
 
   async function handleExport(format: "csv" | "json" | "report") {
     setExportError(null);
@@ -121,6 +128,7 @@ export default function ActorProfileView({
           <AlertIcon width={15} height={15} />
           {error}
         </p>
+        <button onClick={() => setRetryToken((t) => t + 1)}>Retry</button>
       </div>
     );
   }

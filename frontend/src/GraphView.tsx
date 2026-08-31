@@ -184,6 +184,7 @@ export default function GraphView({
   const [entityTypes, setEntityTypes] = useState<Set<string>>(new Set());
   const [relationshipTypes, setRelationshipTypes] = useState<Set<string>>(new Set());
   const [source, setSource] = useState("");
+  const [retryToken, setRetryToken] = useState(0);
 
   useEffect(() => {
     setGraph(null);
@@ -199,7 +200,7 @@ export default function GraphView({
       .catch((err) =>
         setError(err instanceof ApiError ? err.message : "Failed to load relationship graph")
       );
-  }, [actorId, depth, entityTypes, relationshipTypes, source]);
+  }, [actorId, depth, entityTypes, relationshipTypes, source, retryToken]);
 
   function resetFilters() {
     setDepth(1);
@@ -318,6 +319,7 @@ export default function GraphView({
             <AlertIcon width={15} height={15} />
             {error}
           </p>
+          <button onClick={() => setRetryToken((t) => t + 1)}>Retry</button>
         </div>
       </div>
     );

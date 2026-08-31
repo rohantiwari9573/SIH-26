@@ -39,6 +39,18 @@ const HIBP_PER_EMAIL_NOTE = {
     "requires a paid HIBP key (HIBP_API_KEY) — only the public breach directory below is used",
 };
 
+// What each source is actually for — shown so an investigator understands
+// why a source exists before deciding whether to trust/filter by it.
+const SOURCE_PURPOSE: Record<string, string> = {
+  tor_onionoo: "Tor relay metadata and infrastructure enrichment.",
+  misp_circl_osint: "Threat-intelligence event/indicator feed (CIRCL community).",
+  misp_botvrij_osint: "Threat-intelligence event/indicator feed (botvrij.eu/CUDESO), independent of CIRCL.",
+  hibp: "Public breach directory metadata (not per-email lookup).",
+  darkforums: "Historical forum-persona sample (Zenodo, real post content).",
+  evolution_market: "Historical marketplace vendor listings (Evolution Market dataset).",
+  evolution_forum: "Historical forum posts (Evolution Market dataset).",
+};
+
 function SourceTable({ sources, live }: { sources: DataSourceStatus[]; live: boolean }) {
   return (
     <table>
@@ -49,6 +61,7 @@ function SourceTable({ sources, live }: { sources: DataSourceStatus[]; live: boo
           <th>Records</th>
           <th>Last Sync</th>
           <th>Type</th>
+          <th>Purpose</th>
         </tr>
       </thead>
       <tbody>
@@ -56,7 +69,7 @@ function SourceTable({ sources, live }: { sources: DataSourceStatus[]; live: boo
           <tr key={s.key}>
             <td>{s.label}</td>
             <td>
-              <Badge variant={live ? "live" : "historical"} label={live ? "LIVE" : "INGESTED"} />
+              <Badge variant={live ? "live" : "historical"} label={live ? "LIVE" : "HISTORICAL"} />
             </td>
             <td>{s.record_count.toLocaleString()}</td>
             <td>
@@ -67,6 +80,9 @@ function SourceTable({ sources, live }: { sources: DataSourceStatus[]; live: boo
                 : "—"}
             </td>
             <td>{CATEGORY_LABELS[s.category]}</td>
+            <td className="muted" style={{ fontSize: "0.82rem" }}>
+              {SOURCE_PURPOSE[s.key] ?? "—"}
+            </td>
           </tr>
         ))}
       </tbody>
