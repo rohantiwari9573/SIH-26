@@ -34,8 +34,38 @@
 +------------------------------------------------------------------------------+
         |
         v
-                 Dashboard (frontend, to be built) — search, actor profile,
+                 Dashboard (frontend/) — search, actor profile,
                  relationship graph view, export buttons
+```
+
+## A second, separate pipeline: threat categorization
+
+Attribution (above) answers "is this the same actor?" Threat categorization
+answers a different question — "what kind of activity is this actor
+associated with?" — and is kept architecturally separate: it never touches
+`app/services/scoring.py`'s confidence formula, and a category is never
+inferred from an identifier (username, wallet, PGP key) alone.
+
+```
+Real per-item activity content (RawActivity — one row per real listing/post,
+ingested once by scripts/ingest_evolution.py / ingest_darkforums.py, never
+rebuilt)
+        |
+        v
+app/services/threat_categorization.py
+  1. source-provided category, if the dataset has one (e.g. DarkForums'
+     real "category": "Leaks" field) -> confidence "high"
+  2. else: conservative keyword/phrase rules over title+text -> "medium"
+  3. else: unclassified (not persisted)
+        |
+        v
+ThreatActivity (evidence: category, matched reason, source, observed_at) —
+rebuilt each run_full_analysis, actor_id resolved fresh each run, exactly
+like CorrelationEvidence
+        |
+        v
+GET /api/actors/{id}/threat-activity -> ActorProfileView "Observed Threat
+Categories" + Timeline Explorer + exports
 ```
 
 ## Why async jobs, not inline analysis
@@ -55,10 +85,14 @@ and Neo4j is built for. The two are kept in sync by identifier value.
 
 ## Confidence scoring
 
-See `app/services/scoring.py`. Three weighted signals:
-- Stylometric similarity (0.40) — strongest behavioral signal
-- Relationship strength, e.g. shared wallet/PGP key (0.35) — near-certain when present
-- Infra match (0.25) — rare but decisive when found
+See `app/services/scoring.py` (`WEIGHTS`, kept as the single source of truth
+— if this doc and the code ever disagree, trust the code). Three weighted
+signals:
+- Relationship strength, e.g. shared wallet/PGP key (0.65) — near-deterministic when present
+- Stylometric similarity (0.20) — corroborating behavioral signal
+- Infra match (0.15) — rare but decisive when found
 
 Be ready to defend these weights as a starting hypothesis, not a proven model
 — that's an honest answer judges will respect more than false precision.
+Threat-category classification (see above) is deliberately NOT a fourth
+signal here — it answers a different question and must never move this score.

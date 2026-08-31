@@ -2,17 +2,24 @@
 
 A system that links dark-web personas to real-world identity/infrastructure using
 infrastructure fingerprinting, relationship-graph analysis, and stylometric
-behavioral analysis.
+behavioral analysis — and separately classifies each actor's own real activity
+content into a controlled threat-category taxonomy (credential theft, hacking
+services, stolen data, etc.), with full evidence and provenance for every
+category assigned.
 
 > **Ethics / legal notice**: This project never scrapes live dark-web marketplaces.
-> All analysis runs against synthetic data and a self-hosted mock Tor hidden service
-> that the team controls. See [docs/ETHICS.md](docs/ETHICS.md).
+> Real intelligence comes only from public OSINT feeds and already-published academic
+> research datasets (see **Real intelligence sources** below); the infrastructure-scan
+> pillar runs only against a self-hosted mock Tor hidden service the team controls.
+> See [docs/ETHICS.md](docs/ETHICS.md).
 
 ## Architecture
 
-Three analysis pillars feed a unified actor-profile store, exposed through a query
-API and dashboard. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the diagram
-and data flow.
+Two SEPARATE analytical pipelines feed a unified actor-profile store, exposed
+through a query API and dashboard. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+for the diagram and data flow.
+
+**Attribution** — "is this the same actor?"
 
 | Pillar | Module | Tech |
 |---|---|---|
@@ -20,6 +27,40 @@ and data flow.
 | Relationship mapping | `app/services/graph` | Neo4j entity graph, visualized live in the dashboard |
 | Behavioral / stylometric analysis | `app/services/stylometry` | Burrows' Delta authorship attribution (hand-rolled, no ML framework) |
 | Wallet clustering | `app/services/wallet_cluster` | common-input-ownership heuristic |
+
+**Threat categorization** — "what kind of activity is this actor associated with?"
+Deliberately independent of attribution — see `app/services/threat_categorization.py`'s
+module docstring. Never feeds `app/services/scoring.py`'s confidence formula.
+
+| Stage | Module |
+|---|---|
+| Real per-item activity ingestion (one row per listing/post) | `app/models/actor.RawActivity`, `scripts/ingest_evolution.py` / `ingest_darkforums.py` |
+| Classification (source-provided category, else conservative keyword rules) | `app/services/threat_categorization.py` |
+| Evidence storage + actor linkage | `app/models/actor.ThreatActivity`, rebuilt each `run_full_analysis` |
+| API | `GET /api/actors/{id}/threat-activity` |
+| UI | ActorProfileView's "Observed Threat Categories" section |
+
+## Real intelligence sources
+
+Beyond the synthetic/controlled demo data, Argus ingests real public
+intelligence via `scripts/ingest_*.py` — every source is honestly labeled
+(historical dataset / live feed / synthetic), never faked, and a 0-record
+source means genuinely not configured, not hidden:
+
+| Source | Script | What it provides |
+|---|---|---|
+| Evolution Market/Forum dataset (Zenodo) | `ingest_evolution.py` | Real historical marketplace listings + forum posts, real ground-truth cross-platform persona matches |
+| DarkForums dataset (Zenodo) | `ingest_darkforums.py` | Real leak-forum thread/post content with a real source-provided category ("Leaks") |
+| Tor Onionoo (Tor Project) | `ingest_onionoo.py` | Live relay metadata |
+| MISP CIRCL + botvrij.eu OSINT feeds | `ingest_misp_osint.py` | Live threat-intel events + indicators |
+| Have I Been Pwned breach directory | `ingest_hibp.py` | Public breach metadata |
+| URLhaus / MalwareBazaar / Chainabuse | `ingest_urlhaus.py` / `ingest_malwarebazaar.py` / `ingest_chainabuse.py` | Live feeds, require an API key each (0 records/`configured: false` until set) |
+
+`app/services/correlation.py` deterministically cross-checks these against
+Argus's own infrastructure findings (enrichment evidence only, never fed into
+attribution confidence); `app/services/threat_categorization.py` classifies
+the activity-bearing sources (Evolution, DarkForums) into the threat-category
+taxonomy described above.
 
 ## Stack
 
@@ -93,6 +134,19 @@ Or skip the CLI entirely and submit a lead through the dashboard itself
 ("+ Submit lead") — same pipeline, runs async via Celery, polls job status,
 and re-derives every actor cluster from everything known so far.
 
+Ingest real intelligence sources (each is independent, safe to run in any
+order; see **Real intelligence sources** above for what each provides —
+Evolution/DarkForums also populate `RawActivity`/`ThreatActivity` and re-run
+the full pipeline automatically):
+
+```bash
+docker compose exec api python scripts/ingest_evolution.py
+docker compose exec api python scripts/ingest_darkforums.py
+docker compose exec api python scripts/ingest_onionoo.py
+docker compose exec api python scripts/ingest_misp_osint.py
+docker compose exec api python scripts/ingest_hibp.py
+```
+
 Run tests:
 
 ```bash
@@ -134,6 +188,15 @@ dashboard) in this session — not simulated, not just unit-tested in isolation.
       verified live in the browser
 - [x] Export: CSV / JSON / report (PDF) — all three verified live: clicked each
       button in the browser, confirmed the downloaded files' contents
+- [x] Category — `app/services/threat_categorization.py` + `ThreatActivity`
+      table; verified live against real re-ingested DarkForums data: 152 real
+      per-post activity records, all classified via the dataset's own
+      source-provided category field, all linked to the real actor and
+      visible with full evidence (source, matched text, reason, observed
+      date) in the ActorProfileView "Observed Threat Categories" section and
+      in all three export formats. Deliberately does NOT feed attribution
+      confidence — see `app/services/threat_categorization.py`'s module
+      docstring.
 
 No open gaps as of this session. If you change the pipeline or add data,
 re-run `docker compose exec api python scripts/ingest_and_attribute.py` and
@@ -145,16 +208,18 @@ spot-check the dashboard before assuming it still holds.
 app/
   core/       config, security (JWT)
   db/         SQLAlchemy session/base
-  models/     ORM models
+  models/     ORM models (actor.py: Argus's own derived data; external.py: real ingested intel)
   schemas/    Pydantic request/response schemas
-  api/routes/ FastAPI routers (auth, actors, export, leads, jobs, health)
-  services/   the four analysis pillars
+  api/routes/ FastAPI routers (auth, actors, export, leads, jobs, health, dashboard)
+  services/   attribution pillars, correlation, threat categorization
   workers/    Celery app + async analysis tasks
 alembic/            DB migrations
 tests/              unit + integration tests
 docs/               architecture + ethics docs
-scripts/            synthetic dataset generation + attribution pipeline runners
+scripts/            synthetic dataset generation, attribution pipeline runners,
+                     real-source ingestion (ingest_evolution.py, ingest_darkforums.py,
+                     ingest_onionoo.py, ingest_misp_osint.py, ingest_hibp.py, ...)
 frontend/           React + TypeScript dashboard (login, search, actor profile, exports)
 mock_leaky_service/ deliberately misconfigured target for the infra-scan pillar
-data/               generated synthetic dataset (personas.json, wallet_transactions.json)
+data/               generated synthetic dataset + extracted real-source data (data/external/)
 ```

@@ -26,6 +26,7 @@ everything in the PS" question before a judge has to ask it.
 | Query interface | React dashboard + API | Working |
 | Actor profile (identifiers + infra + confidence together) | Dashboard profile view | Working |
 | Export: CSV / JSON / report | Dashboard export buttons | Working, all 3 verified |
+| Category | `app/services/threat_categorization.py`, `ThreatActivity` | Working — 152 real activity records classified live from real DarkForums data, evidence-backed, never touches attribution confidence |
 
 ## Live demo script
 
@@ -50,10 +51,17 @@ Run this exact sequence on stage. It's the same flow verified in this session.
    usernames visibly converging on the same wallet and PGP key nodes.
 6. **Click all three export buttons** — CSV, JSON, PDF report — show the
    files land in Downloads with real content, live.
-7. **Pull up `careless_admin`** (the low-confidence infra-only lead) to show
+7. **Scroll to "Observed Threat Categories"** on the flagship actor's profile
+   (or a DarkForums-sourced actor, which has the richest real category data)
+   — click a category to expand its evidence table: real listing/post text,
+   real source, real date, and the exact reason Argus assigned that
+   category. Say explicitly: *"This is a separate question from
+   attribution — it never moves the confidence score above, and an
+   unclassified activity is left unclassified rather than guessed at."*
+8. **Pull up `careless_admin`** (the low-confidence infra-only lead) to show
    the infra pillar working on its own, independent of the other two —
    this demonstrates pillar 1 isn't just decorative.
-8. **Pull up `frostbyte_dealer` / `javabean_vendor`** (confidence ~18%) —
+9. **Pull up `frostbyte_dealer` / `javabean_vendor`** (confidence ~18%) —
    this is the graded-confidence talking point: stylometry alone flagged
    them as similar, but with no shared wallet/PGP yet, the system correctly
    reports lower confidence instead of a false binary yes. Then, live:
