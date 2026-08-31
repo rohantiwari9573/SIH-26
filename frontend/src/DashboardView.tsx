@@ -73,7 +73,7 @@ export default function DashboardView({ onSelectActor }: { onSelectActor: (id: s
     ])
       .then(([s, actors, link, infra, tl, src]) => {
         setStats(s);
-        setTopActors(actors.slice(0, 5));
+        setTopActors(actors.items.slice(0, 5));
         setTopLink(link);
         setFindings(infra);
         setTimeline(tl);

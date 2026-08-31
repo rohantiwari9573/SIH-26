@@ -94,6 +94,19 @@ class ActorSearchResult(BaseModel):
     matched_identifier: str | None = None
 
 
+class PaginatedActorsOut(BaseModel):
+    """Server-side pagination for GET /api/actors — with 141 real derived
+    actors already exceeding the old hardcoded limit=100, a flat array
+    silently hid real actors rather than truncating honestly. total lets the
+    UI show "showing 100 of 141" and page through the rest, instead of
+    loading everything into React to hide most of it client-side."""
+
+    items: list[ActorSearchResult]
+    total: int
+    page: int
+    page_size: int
+
+
 class AttributionSignal(BaseModel):
     label: str
     value: float  # 0-1
@@ -148,8 +161,19 @@ class ThreatCategorySummary(BaseModel):
 
 
 class ActorThreatActivityOut(BaseModel):
+    """summary is always the full aggregation across ALL of this actor's
+    activities (cheap — one row per category). activities is paginated —
+    with real actors already returning 150+ evidence rows, the UI fetches
+    one category's evidence page at a time (see ActorProfileView) rather
+    than every activity up front. activities_total is the count for the
+    current category filter (or all activities if none given), so the UI
+    can render "page X of Y" without a second request."""
+
     summary: list[ThreatCategorySummary]
     activities: list[ThreatActivityOut]
+    activities_total: int
+    page: int
+    page_size: int
 
 
 class CorrelationEvidenceOut(BaseModel):

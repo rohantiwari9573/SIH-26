@@ -27,5 +27,11 @@ class Settings(BaseSettings):
     chainabuse_api_key: str | None = None
     hibp_api_key: str | None = None
 
+    # Number of most-recent MISP events per feed to expand into full-detail
+    # real indicators (see scripts/ingest_misp_osint.py) — configurable
+    # rather than hardcoded so a deeper backfill doesn't require a code
+    # change. The CLI --indicator-limit flag still overrides this per-run.
+    misp_max_events: int = 10
+
 
 settings = Settings()

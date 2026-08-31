@@ -1,7 +1,21 @@
 import { useEffect, useState } from "react";
-import { ApiError, DataSourceStatus, SystemStatus, getSourceRegistry, getSystemStatus } from "./api";
+import {
+  AnalysisJobRecord,
+  ApiError,
+  DataSourceStatus,
+  SystemStatus,
+  getSourceRegistry,
+  getSystemStatus,
+  listRecentJobs,
+} from "./api";
 import { SkeletonRows } from "./Skeleton";
 import { ActivityIcon, AlertIcon } from "./icons";
+
+const JOB_STATUS_COLOR: Record<string, string> = {
+  success: "var(--high)",
+  failure: "var(--danger)",
+  running: "var(--accent)",
+};
 
 function StatusDot({ healthy }: { healthy: boolean }) {
   return (
@@ -19,27 +33,30 @@ function StatusDot({ healthy }: { healthy: boolean }) {
   );
 }
 
-// PS-26151 "autonomous/continuous intelligence pipeline". Two real, live
+// PS-26151 "autonomous/continuous intelligence pipeline". Three real, live
 // panels: (1) component health, checked at request time — never a static
 // "all green" placeholder; (2) source ingestion status, reusing the exact
-// same registry SourcesView reads. Deliberately does NOT show a "recent
-// jobs" table: Argus's AnalysisJob model exists but nothing in the pipeline
-// writes to it yet, so a job-history list here would be fabricated. Celery
-// task status IS real and inspectable per-submission via GET
-// /api/jobs/{task_id} (see SubmitLeadView / DemoScenarioView), which is
-// noted below instead of faked as a list.
+// same registry SourcesView reads; (3) recent analysis jobs, reading
+// app.models.actor.AnalysisJob — real rows persisted by the Celery
+// reanalyze_all task (see that model's docstring), not fabricated. CLI-
+// driven ingestion (scripts/ingest_*.py) does NOT appear here since it
+// bypasses Celery entirely — an honest scope, not a hidden gap.
 export default function JobsScansView() {
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [sources, setSources] = useState<DataSourceStatus[] | null>(null);
+  const [jobs, setJobs] = useState<AnalysisJobRecord[] | null>(null);
+  const [jobsTotal, setJobsTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [retryToken, setRetryToken] = useState(0);
 
   useEffect(() => {
     setError(null);
-    Promise.all([getSystemStatus(), getSourceRegistry()])
-      .then(([s, src]) => {
+    Promise.all([getSystemStatus(), getSourceRegistry(), listRecentJobs(1, 20)])
+      .then(([s, src, jobsResult]) => {
         setStatus(s);
         setSources(src);
+        setJobs(jobsResult.items);
+        setJobsTotal(jobsResult.total);
       })
       .catch((err) => setError(err instanceof ApiError ? err.message : "Failed to load system status"));
   }, [retryToken]);
@@ -148,15 +165,67 @@ export default function JobsScansView() {
           <div className="section-card">
             <div className="section-heading">
               <h3>Analysis Jobs</h3>
+              {jobs && <span className="section-count">{jobsTotal}</span>}
             </div>
-            <p className="muted">
+            <p className="muted" style={{ marginBottom: "0.75rem" }}>
               Lead analysis, correlation, and attribution recomputation run asynchronously via
-              Celery on every lead submission (see Submit Lead / Controlled Demo) — each
-              submission returns a task id you can poll at{" "}
-              <code>GET /api/jobs/&#123;task_id&#125;</code> for real-time status. Argus does not
-              yet persist a queryable history of past jobs, so a "recent jobs" list is
-              intentionally not shown here rather than fabricated.
+              Celery on every lead submission (see Submit Lead / Controlled Demo). Each row below
+              is a real persisted job — CLI-driven ingestion (ingest_evolution.py, etc.) bypasses
+              Celery and does not appear here; that is a scope boundary, not a gap.
             </p>
+            {jobs === null ? (
+              <SkeletonRows count={3} />
+            ) : jobs.length === 0 ? (
+              <p className="muted">
+                No jobs recorded yet. Submit a lead (or run the Controlled Demo) to enqueue one.
+              </p>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Target</th>
+                    <th>Task ID</th>
+                    <th>Started</th>
+                    <th>Completed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {jobs.map((j) => (
+                    <tr key={j.id}>
+                      <td>{j.job_type}</td>
+                      <td>
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "0.4rem",
+                          }}
+                        >
+                          <span
+                            style={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: "50%",
+                              background: JOB_STATUS_COLOR[j.status] ?? "var(--text-secondary)",
+                              display: "inline-block",
+                            }}
+                          />
+                          {j.status}
+                        </span>
+                      </td>
+                      <td className="muted">{j.target}</td>
+                      <td className="mono" style={{ fontSize: "0.78rem" }}>
+                        {j.task_id ?? "—"}
+                      </td>
+                      <td>{new Date(j.created_at).toLocaleString()}</td>
+                      <td>{j.completed_at ? new Date(j.completed_at).toLocaleString() : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </>
       )}

@@ -247,7 +247,18 @@ class ThreatActivity(Base):
 
 
 class AnalysisJob(Base):
-    """Tracks async Celery jobs so the query interface can show job status."""
+    """Tracks async Celery jobs so the query interface can show job status.
+
+    Populated by app.workers.tasks.reanalyze_all (the Celery task POST
+    /api/leads enqueues) — a real row per run, not a fabricated history.
+    task_id matches the Celery task id also returned to the API caller
+    (GET /api/jobs/{task_id} reads live status from Celery's own result
+    backend; this table is a separate, persistent history of the same runs,
+    queryable after the Celery result TTL expires). CLI-driven analysis
+    (scripts/ingest_and_attribute.py, ingest_evolution.py, etc.) calls
+    run_full_analysis directly, not through Celery, so it does NOT appear
+    here — this is honestly a history of async jobs, not of every pipeline
+    run."""
 
     __tablename__ = "analysis_jobs"
 
@@ -257,6 +268,7 @@ class AnalysisJob(Base):
     job_type: Mapped[str] = mapped_column(String(64))  # infra_scan | stylometry | graph | wallet
     status: Mapped[str] = mapped_column(String(32), default="pending")
     target: Mapped[str] = mapped_column(String(512))
+    task_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

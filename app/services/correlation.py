@@ -13,6 +13,20 @@ demo/synthetic infrastructure (a self-hosted mock service) has no reason to
 share a real IP/domain with the live Tor network or real threat feeds,
 finding zero matches on a given run is the CORRECT and expected result, not
 a bug — see run_correlation()'s docstring.
+
+LIFECYCLE (audited, Phase 5): CorrelationEvidence has no ACTIVE/STALE/
+REVOKED state machine, and this is a deliberate finding, not an oversight.
+app.services.pipeline.run_full_analysis deletes every CorrelationEvidence
+row and calls correlate_tor_relays/correlate_misp_indicators/
+correlate_hibp_breaches fresh on EVERY run — the same full-rebuild-from-
+scratch pattern already used for Actor/Identifier/AttributionEdge/
+ThreatActivity (see that module's docstring). A stale match cannot survive
+past one pipeline run; the only "staleness window" is within a single run,
+which is inherent to every derived table here, not specific to correlation.
+Adding an explicit lifecycle state machine on top of a table that's already
+atomically rebuilt every run would be complexity with no real behavior
+change — reconsider only if CorrelationEvidence is ever changed to persist
+incrementally instead of rebuilding from scratch.
 """
 from dataclasses import dataclass
 

@@ -114,7 +114,13 @@ def _load_forum_usernames(target_uids: set[str]) -> dict[str, str]:
 def _upsert_raw_activities(db, raw_persona_id, platform: str, activities: list[dict]) -> int:
     """Upserts by source_record_id (the exact real listing/post id) rather
     than blindly inserting, so re-running this script doesn't duplicate rows
-    for the same underlying source item."""
+    for the same underlying source item. Explicit db.flush() after each
+    add — SessionLocal is autoflush=False (see app/db/session.py), so
+    without this, two activities sharing a source_record_id within the same
+    `activities` list (shouldn't happen given the caller dedupes by lid, but
+    this function has no way to enforce that on its input) would both query
+    "not found" and both get inserted, crashing the batch INSERT on the real
+    unique constraint — reproduced live before this fix."""
     count = 0
     for act in activities:
         existing = (
@@ -131,6 +137,7 @@ def _upsert_raw_activities(db, raw_persona_id, platform: str, activities: list[d
         existing.text = act["text"]
         existing.source_category = None
         existing.observed_at = act.get("observed_at")
+        db.flush()
         count += 1
     return count
 
@@ -206,15 +213,34 @@ def main(max_personas: int) -> None:
         scrape_date = scrape_dates.get(row.get("mscrape_id"))
         if scrape_date and (vid not in market_date or scrape_date < market_date[vid]):
             market_date[vid] = scrape_date
+        # listings_sample.tsv has one row per *scrape* of a listing, not one
+        # row per listing — the same lid recurs many times (2999 rows over
+        # only 72 unique lids in the committed sample; confirmed by
+        # inspection, not assumed). Each lid must map to exactly ONE
+        # RawActivity (source_record_id is a real unique constraint) — keep
+        # the earliest-observed scrape's title/description as the
+        # representative content for that listing, updating in place if an
+        # earlier scrape than what's already stored is found (rows are not
+        # guaranteed sorted by date).
         if title or desc:
-            market_activities.setdefault(vid, []).append(
-                {
-                    "source_record_id": f"evolution_market:listing:{row['lid']}",
-                    "title": title or None,
-                    "text": (desc or title)[:4000],
-                    "observed_at": scrape_date,
-                }
-            )
+            key = f"evolution_market:listing:{row['lid']}"
+            existing_acts = market_activities.setdefault(vid, [])
+            match = next((a for a in existing_acts if a["source_record_id"] == key), None)
+            if match is None:
+                existing_acts.append(
+                    {
+                        "source_record_id": key,
+                        "title": title or None,
+                        "text": (desc or title)[:4000],
+                        "observed_at": scrape_date,
+                    }
+                )
+            elif scrape_date and (
+                match["observed_at"] is None or scrape_date < match["observed_at"]
+            ):
+                match["title"] = title or match["title"]
+                match["text"] = (desc or title)[:4000]
+                match["observed_at"] = scrape_date
 
     forum_text: dict[str, list[str]] = {}
     forum_activities: dict[str, list[dict]] = {}

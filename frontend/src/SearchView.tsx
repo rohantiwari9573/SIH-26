@@ -4,33 +4,57 @@ import ConfidenceBadge from "./ConfidenceBadge";
 import { AlertIcon, InboxIcon, SearchIcon, UserIcon } from "./icons";
 import { SkeletonRows } from "./Skeleton";
 
+const PAGE_SIZE = 50;
+
 export default function SearchView({
   onSelectActor,
 }: {
   onSelectActor: (actorId: string) => void;
 }) {
   const [query, setQuery] = useState("");
+  const [activeQuery, setActiveQuery] = useState("");
   const [results, setResults] = useState<ActorSearchResult[]>([]);
+  const [total, setTotal] = useState<number | null>(null);
+  const [page, setPage] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [retryToken, setRetryToken] = useState(0);
 
+  // Real server-side pagination for the un-searched browse list — with 141+
+  // real actors already past the old hardcoded 100-row cap, loading
+  // "everything" into React and hiding the rest client-side would silently
+  // drop real actors from view. Search (a substring match, not a browse)
+  // stays as its own server-capped-at-50 endpoint — see api.ts.
   useEffect(() => {
+    if (activeQuery) return;
     setError(null);
     setLoading(true);
-    listActors()
-      .then(setResults)
+    listActors(page, PAGE_SIZE)
+      .then((r) => {
+        setResults(r.items);
+        setTotal(r.total);
+      })
       .catch((err) => setError(err instanceof ApiError ? err.message : "Failed to load actors"))
       .finally(() => setLoading(false));
-  }, [retryToken]);
+  }, [page, activeQuery, retryToken]);
 
   async function handleSearch(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setLoading(true);
+    const trimmed = query.trim();
+    setActiveQuery(trimmed);
+    setPage(1);
     try {
-      const data = query.trim() ? await searchActors(query.trim()) : await listActors();
-      setResults(data);
+      if (trimmed) {
+        const data = await searchActors(trimmed);
+        setResults(data);
+        setTotal(null);
+      } else {
+        const data = await listActors(1, PAGE_SIZE);
+        setResults(data.items);
+        setTotal(data.total);
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Search failed");
     } finally {
@@ -39,6 +63,7 @@ export default function SearchView({
   }
 
   const highConfidence = results.filter((r) => r.confidence_score >= 0.7).length;
+  const totalPages = total !== null ? Math.max(1, Math.ceil(total / PAGE_SIZE)) : 1;
 
   return (
     <div>
@@ -63,10 +88,13 @@ export default function SearchView({
       {!loading && !error && results.length > 0 && (
         <div className="stat-strip">
           <span className="stat-chip">
-            <strong>{results.length}</strong>&nbsp;actor{results.length === 1 ? "" : "s"}
+            <strong>{total ?? results.length}</strong>&nbsp;actor{(total ?? results.length) === 1 ? "" : "s"}
+            {total !== null && total > results.length && (
+              <span className="muted"> (showing {results.length})</span>
+            )}
           </span>
           <span className="stat-chip">
-            <strong>{highConfidence}</strong>&nbsp;high-confidence
+            <strong>{highConfidence}</strong>&nbsp;high-confidence{activeQuery ? "" : " on this page"}
           </span>
         </div>
       )}
@@ -113,6 +141,30 @@ export default function SearchView({
           </li>
         ))}
       </ul>
+
+      {!loading && !error && !activeQuery && total !== null && totalPages > 1 && (
+        <div className="pager" role="navigation" aria-label="Actor list pages">
+          <button
+            className="btn-ghost"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            aria-label="Previous page"
+          >
+            Previous
+          </button>
+          <span className="muted" style={{ fontSize: "0.85rem" }}>
+            Page {page} of {totalPages}
+          </span>
+          <button
+            className="btn-ghost"
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page >= totalPages}
+            aria-label="Next page"
+          >
+            Next
+          </button>
+        </div>
+      )}
     </div>
   );
 }

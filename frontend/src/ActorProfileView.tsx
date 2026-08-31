@@ -85,6 +85,9 @@ export default function ActorProfileView({
   const [breakdown, setBreakdown] = useState<AttributionBreakdown | null>(null);
   const [threatActivity, setThreatActivity] = useState<ActorThreatActivity | null>(null);
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+  const [categoryPages, setCategoryPages] = useState<
+    Record<string, { activities: ActorThreatActivity["activities"]; total: number; page: number; loading: boolean }>
+  >({});
   const [error, setError] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
@@ -97,6 +100,7 @@ export default function ActorProfileView({
     setBreakdown(null);
     setThreatActivity(null);
     setExpandedCategory(null);
+    setCategoryPages({});
     getActorProfile(actorId)
       .then(setProfile)
       .catch((err) =>
@@ -112,8 +116,47 @@ export default function ActorProfileView({
       .catch(() => setBreakdown(null));
     getActorThreatActivity(actorId)
       .then(setThreatActivity)
-      .catch(() => setThreatActivity({ summary: [], activities: [] }));
+      .catch(() =>
+        setThreatActivity({ summary: [], activities: [], activities_total: 0, page: 1, page_size: 50 })
+      );
   }, [actorId, retryToken]);
+
+  const CATEGORY_PAGE_SIZE = 25;
+
+  async function loadCategoryPage(category: string, page: number) {
+    setCategoryPages((prev) => ({
+      ...prev,
+      [category]: {
+        activities: prev[category]?.activities ?? [],
+        total: prev[category]?.total ?? 0,
+        page,
+        loading: true,
+      },
+    }));
+    try {
+      const data = await getActorThreatActivity(actorId, { category, page, pageSize: CATEGORY_PAGE_SIZE });
+      setCategoryPages((prev) => ({
+        ...prev,
+        [category]: { activities: data.activities, total: data.activities_total, page, loading: false },
+      }));
+    } catch {
+      setCategoryPages((prev) => ({
+        ...prev,
+        [category]: { activities: [], total: 0, page, loading: false },
+      }));
+    }
+  }
+
+  function toggleCategory(category: string) {
+    if (expandedCategory === category) {
+      setExpandedCategory(null);
+      return;
+    }
+    setExpandedCategory(category);
+    if (!categoryPages[category]) {
+      loadCategoryPage(category, 1);
+    }
+  }
 
   async function handleExport(format: "csv" | "json" | "report") {
     setExportError(null);
@@ -404,12 +447,15 @@ export default function ActorProfileView({
             <div>
               {threatActivity.summary.map((cat) => {
                 const isOpen = expandedCategory === cat.category;
-                const items = threatActivity.activities.filter((a) => a.category === cat.category);
+                const pageState = categoryPages[cat.category];
+                const totalPages = pageState
+                  ? Math.max(1, Math.ceil(pageState.total / CATEGORY_PAGE_SIZE))
+                  : 1;
                 return (
                   <div key={cat.category} className="threat-category-block">
                     <button
                       className="threat-category-row"
-                      onClick={() => setExpandedCategory(isOpen ? null : cat.category)}
+                      onClick={() => toggleCategory(cat.category)}
                       aria-expanded={isOpen}
                     >
                       <span className="threat-category-label">{cat.category_label}</span>
@@ -419,40 +465,76 @@ export default function ActorProfileView({
                       </span>
                     </button>
                     {isOpen && (
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>Source</th>
-                            <th>Persona</th>
-                            <th>Activity</th>
-                            <th>Why classified</th>
-                            <th>Observed</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {items.map((item) => (
-                            <tr key={item.id}>
-                              <td>
-                                {item.source_platform}{" "}
-                                <Badge variant={platformBadgeVariant(item.source_platform)} />
-                              </td>
-                              <td className="mono">{item.persona_username}</td>
-                              <td>{item.title ?? item.source_record_id}</td>
-                              <td className="muted">
-                                {item.classification_reason}
-                                <span className="muted" style={{ display: "block", fontSize: "0.78rem" }}>
-                                  {item.classification_confidence === "high"
-                                    ? "High confidence — source-provided category"
-                                    : "Medium confidence — keyword rule match"}
+                      <>
+                        {!pageState || pageState.loading ? (
+                          <SkeletonBlock height={60} />
+                        ) : (
+                          <>
+                            <table>
+                              <thead>
+                                <tr>
+                                  <th>Source</th>
+                                  <th>Persona</th>
+                                  <th>Activity</th>
+                                  <th>Why classified</th>
+                                  <th>Observed</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {pageState.activities.map((item) => (
+                                  <tr key={item.id}>
+                                    <td>
+                                      {item.source_platform}{" "}
+                                      <Badge variant={platformBadgeVariant(item.source_platform)} />
+                                    </td>
+                                    <td className="mono">{item.persona_username}</td>
+                                    <td>{item.title ?? item.source_record_id}</td>
+                                    <td className="muted">
+                                      {item.classification_reason}
+                                      <span
+                                        className="muted"
+                                        style={{ display: "block", fontSize: "0.78rem" }}
+                                      >
+                                        {item.classification_confidence === "high"
+                                          ? "High confidence — source-provided category"
+                                          : "Medium confidence — keyword rule match"}
+                                      </span>
+                                    </td>
+                                    <td>
+                                      {item.observed_at
+                                        ? new Date(item.observed_at).toLocaleDateString()
+                                        : "—"}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                            {totalPages > 1 && (
+                              <div className="pager" style={{ padding: "0.75rem 0" }}>
+                                <button
+                                  className="btn-ghost"
+                                  onClick={() => loadCategoryPage(cat.category, pageState.page - 1)}
+                                  disabled={pageState.page <= 1}
+                                  aria-label={`Previous page of ${cat.category_label} evidence`}
+                                >
+                                  Previous
+                                </button>
+                                <span className="muted" style={{ fontSize: "0.85rem" }}>
+                                  Page {pageState.page} of {totalPages}
                                 </span>
-                              </td>
-                              <td>
-                                {item.observed_at ? new Date(item.observed_at).toLocaleDateString() : "—"}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                                <button
+                                  className="btn-ghost"
+                                  onClick={() => loadCategoryPage(cat.category, pageState.page + 1)}
+                                  disabled={pageState.page >= totalPages}
+                                  aria-label={`Next page of ${cat.category_label} evidence`}
+                                >
+                                  Next
+                                </button>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </>
                     )}
                   </div>
                 );

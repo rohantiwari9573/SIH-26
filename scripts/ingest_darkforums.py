@@ -124,6 +124,11 @@ def main() -> None:
                 existing.text = act["text"]
                 existing.source_category = act["source_category"]
                 existing.observed_at = act["observed_at"]
+                # SessionLocal is autoflush=False — flush so a subsequent
+                # source_record_id lookup in this loop sees this row (real
+                # post_ids are unique in this dataset, but this guards the
+                # same duplicate-insert crash class as ingest_evolution.py).
+                db.flush()
                 activities_upserted += 1
 
             upserted += 1

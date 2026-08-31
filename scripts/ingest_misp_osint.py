@@ -18,7 +18,16 @@ each verified against a real response, not assumed identical.
 
 Usage: python scripts/ingest_misp_osint.py [--limit N] [--indicator-limit N]
 (--limit applies per feed, not to the combined total; --indicator-limit is
-the number of most-recent events per feed to expand into real indicators)
+the number of most-recent events per feed to expand into real indicators,
+defaulting to the MISP_MAX_EVENTS env var / app.core.config.settings.
+misp_max_events rather than a bare hardcoded constant, so a deeper backfill
+is a config change, not a code change.)
+
+Also skips re-fetching an event's indicator JSON if that event_uuid already
+has at least one MispIndicator row from a prior run — repeated runs only
+pay the HTTP cost for genuinely new most-recent events (see the
+already_indexed comment below for the one known edge case this doesn't
+cover).
 """
 import argparse
 import sys
@@ -29,6 +38,7 @@ import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from app.core.config import settings  # noqa: E402
 from app.db.session import SessionLocal  # noqa: E402
 from app.models.external import MispIndicator, ThreatEvent  # noqa: E402
 
@@ -136,14 +146,40 @@ def main(limit: int, indicator_limit: int) -> None:
             print(f"MISP OSINT: upserted {upserted} event(s) from {manifest_url}")
             total_upserted += upserted
 
+            # Skip events whose indicators were already fetched in a prior
+            # run — MISP event JSON is immutable once published (no in-place
+            # edits to a published event's attribute list), so re-fetching
+            # an event already represented in misp_indicators just repeats
+            # the same download for no new data. Only genuinely new
+            # most-recent events do a real HTTP fetch.
+            # Known tradeoff: an event with zero correlatable attributes (see
+            # CORRELATABLE_TYPES) never produces a MispIndicator row, so it
+            # can never appear in already_indexed and will be re-fetched on
+            # every run even though nothing new will be found. Accepted
+            # rather than adding a table/column just to flag "checked, no
+            # indicators" — this only affects events that were never worth
+            # fetching in the first place, and it's strictly no worse than
+            # the previous behavior (which re-fetched every event, every
+            # run, unconditionally).
+            already_indexed = {
+                row[0]
+                for row in db.query(MispIndicator.event_uuid)
+                .filter(MispIndicator.source == source)
+                .distinct()
+                .all()
+            }
             indicator_events = events[:indicator_limit]
+            to_fetch = [(u, e) for u, e in indicator_events if u not in already_indexed]
+            skipped = len(indicator_events) - len(to_fetch)
+
             feed_indicators = 0
-            for event_uuid, _event in indicator_events:
+            for event_uuid, _event in to_fetch:
                 feed_indicators += _fetch_indicators(db, source, FEED_BASES[source], event_uuid)
             db.commit()
             print(
                 f"MISP OSINT: upserted {feed_indicators} real indicator(s) from "
-                f"{len(indicator_events)} expanded event(s) ({source})"
+                f"{len(to_fetch)} expanded event(s) ({source}), "
+                f"{skipped} already-indexed event(s) skipped"
             )
             total_indicators += feed_indicators
 
@@ -158,6 +194,6 @@ def main(limit: int, indicator_limit: int) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=200)
-    parser.add_argument("--indicator-limit", type=int, default=10)
+    parser.add_argument("--indicator-limit", type=int, default=settings.misp_max_events)
     args = parser.parse_args()
     main(args.limit, args.indicator_limit)

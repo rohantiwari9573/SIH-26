@@ -7,7 +7,9 @@ export default function AttributionView({ onSelectActor }: { onSelectActor: (id:
   const [actors, setActors] = useState<ActorSearchResult[] | null>(null);
 
   useEffect(() => {
-    listActors().then(setActors).catch(() => setActors([]));
+    listActors()
+      .then((r) => setActors(r.items))
+      .catch(() => setActors([]));
   }, []);
 
   return (

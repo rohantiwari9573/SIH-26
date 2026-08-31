@@ -14,7 +14,7 @@ import app.api.routes.leads as leads_route
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
-from app.models.actor import RawPersona
+from app.models.actor import AnalysisJob, RawPersona
 
 
 @pytest.fixture()
@@ -143,3 +143,37 @@ def test_job_status_endpoint(client, monkeypatch):
     body = response.json()
     assert body["status"] == "SUCCESS"
     assert body["result"]["actor_count"] == 2
+
+
+def test_list_recent_jobs_returns_persisted_rows(client):
+    """GET /api/jobs — real AnalysisJob rows, paginated, most recent first."""
+    test_client, SessionLocal = client
+    headers = _auth_headers(test_client)
+
+    db = SessionLocal()
+    db.add(
+        AnalysisJob(
+            job_type="reanalyze_all", status="success",
+            target="full pipeline reanalysis (all raw personas)", task_id="task-1",
+        )
+    )
+    db.add(
+        AnalysisJob(
+            job_type="reanalyze_all", status="failure",
+            target="full pipeline reanalysis (all raw personas)", task_id="task-2",
+        )
+    )
+    db.commit()
+    db.close()
+
+    response = test_client.get("/api/jobs?page=1&page_size=10", headers=headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 2
+    assert len(body["items"]) == 2
+    assert {j["status"] for j in body["items"]} == {"success", "failure"}
+
+
+def test_list_recent_jobs_requires_auth(client):
+    test_client, _ = client
+    assert test_client.get("/api/jobs").status_code == 401

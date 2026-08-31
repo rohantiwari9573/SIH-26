@@ -19,3 +19,17 @@ build/
 # Generated at build/run time by mock_leaky_service/generate_cert.py
 mock_leaky_service/cert.pem
 mock_leaky_service/key.pem
+
+# Full Evolution Market/Forum dataset files (123MB/27MB) — re-extracted from
+# the public Zenodo archive (record 10171217) as needed, never committed.
+# See scripts/ingest_evolution.py's error message for the exact re-extraction
+# commands. The small derived samples (listings_sample.tsv, post_sample.tsv,
+# user-matching.tsv, market_scrapes.tsv) ARE committed — only these two
+# full-size source files are excluded.
+data/external/evolution/vendors.tsv
+data/external/evolution/user.tsv
+
+# Playwright artifacts (frontend/e2e) — never committed.
+frontend/test-results/
+frontend/playwright-report/
+frontend/playwright/.cache/

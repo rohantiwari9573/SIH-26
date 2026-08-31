@@ -1,4 +1,7 @@
-from pydantic import BaseModel, Field
+import uuid
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class LeadCreate(BaseModel):
@@ -23,3 +26,26 @@ class JobStatus(BaseModel):
     task_id: str
     status: str  # PENDING | STARTED | SUCCESS | FAILURE
     result: dict | None = None
+
+
+class AnalysisJobOut(BaseModel):
+    """One real, persisted AnalysisJob row — see that model's docstring for
+    exactly which pipeline runs populate this (Celery-triggered reanalyze_all
+    only, not CLI scripts)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    job_type: str
+    status: str
+    target: str
+    task_id: str | None
+    created_at: datetime
+    completed_at: datetime | None
+
+
+class PaginatedAnalysisJobsOut(BaseModel):
+    items: list[AnalysisJobOut]
+    total: int
+    page: int
+    page_size: int

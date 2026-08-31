@@ -15,6 +15,7 @@ from app.schemas.actor import (
     AttributionBreakdownOut,
     AttributionSignal,
     CorrelationEvidenceOut,
+    PaginatedActorsOut,
     ThreatActivityOut,
     ThreatCategorySummary,
 )
@@ -214,19 +215,50 @@ def get_actor_correlation_evidence(actor_id: uuid.UUID, db: Session = Depends(ge
 
 
 @router.get("/{actor_id}/threat-activity", response_model=ActorThreatActivityOut)
-def get_actor_threat_activity(actor_id: uuid.UUID, db: Session = Depends(get_db)):
+def get_actor_threat_activity(
+    actor_id: uuid.UUID,
+    category: str | None = None,
+    page: int = 1,
+    page_size: int = 50,
+    db: Session = Depends(get_db),
+):
     """"What type of threat activity is this actor associated with?" — a
     SEPARATE question from attribution-breakdown's "why is this the same
     actor?" (see app.services.threat_categorization's module docstring).
     Every row is a real classified ThreatActivity; an empty summary/activity
     list is the honest, expected result for an actor with no classifiable
     activity content (e.g. one built only from Tor Onionoo/MISP/HIBP
-    correlation, which carries no narrative activity text at all)."""
+    correlation, which carries no narrative activity text at all).
+
+    `summary` always reflects ALL of this actor's activities (cheap
+    aggregation). `activities` is filtered to `category` (if given) and
+    paginated — a real actor can have 150+ activities in one category, and
+    the UI fetches one category's evidence page at a time rather than every
+    row up front (see ActorProfileView). Exports (app.api.routes.export) use
+    the underlying un-paginated, un-filtered service function directly, so a
+    report always contains everything regardless of what page the UI last
+    viewed."""
     actor = db.query(Actor).filter(Actor.id == actor_id).first()
     if actor is None:
         raise HTTPException(status_code=404, detail="Actor not found")
 
     rows = get_actor_threat_activities(db, actor_id)
+
+    summary = [
+        ThreatCategorySummary(
+            category=s.category,
+            category_label=s.category_label,
+            activity_count=s.activity_count,
+            sources=s.sources,
+        )
+        for s in summarize_by_category(rows)
+    ]
+
+    filtered = [r for r in rows if category is None or r.category == category]
+    page = max(1, page)
+    page_size = max(1, min(page_size, 200))
+    start = (page - 1) * page_size
+    page_rows = filtered[start : start + page_size]
 
     activities = [
         ThreatActivityOut(
@@ -243,28 +275,43 @@ def get_actor_threat_activity(actor_id: uuid.UUID, db: Session = Depends(get_db)
             classification_method=row.classification_method,
             classification_confidence=row.classification_confidence,
         )
-        for row in rows
+        for row in page_rows
     ]
 
-    summary = [
-        ThreatCategorySummary(
-            category=s.category,
-            category_label=s.category_label,
-            activity_count=s.activity_count,
-            sources=s.sources,
-        )
-        for s in summarize_by_category(rows)
-    ]
-
-    return ActorThreatActivityOut(summary=summary, activities=activities)
+    return ActorThreatActivityOut(
+        summary=summary,
+        activities=activities,
+        activities_total=len(filtered),
+        page=page,
+        page_size=page_size,
+    )
 
 
-@router.get("", response_model=list[ActorSearchResult])
-def list_actors(db: Session = Depends(get_db)):
-    actors = db.query(Actor).order_by(Actor.confidence_score.desc()).limit(100).all()
-    return [
-        ActorSearchResult(
-            id=a.id, label=a.label, confidence_score=a.confidence_score, updated_at=a.updated_at
-        )
-        for a in actors
-    ]
+@router.get("", response_model=PaginatedActorsOut)
+def list_actors(page: int = 1, page_size: int = 100, db: Session = Depends(get_db)):
+    """Server-side paginated — see PaginatedActorsOut's docstring. page/
+    page_size are clamped, not trusted blindly: an investigative tool, not
+    an invitation to request an unbounded page."""
+    page = max(1, page)
+    page_size = max(1, min(page_size, 200))
+
+    total = db.query(Actor).count()
+    actors = (
+        db.query(Actor)
+        .order_by(Actor.confidence_score.desc(), Actor.id)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    return PaginatedActorsOut(
+        items=[
+            ActorSearchResult(
+                id=a.id, label=a.label, confidence_score=a.confidence_score,
+                updated_at=a.updated_at,
+            )
+            for a in actors
+        ],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )

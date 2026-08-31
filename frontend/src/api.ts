@@ -134,8 +134,15 @@ export function logout(): void {
   setToken(null);
 }
 
-export async function listActors(): Promise<ActorSearchResult[]> {
-  return request<ActorSearchResult[]>("/api/actors");
+export interface PaginatedActors {
+  items: ActorSearchResult[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export async function listActors(page = 1, pageSize = 100): Promise<PaginatedActors> {
+  return request<PaginatedActors>(`/api/actors?page=${page}&page_size=${pageSize}`);
 }
 
 export async function searchActors(query: string): Promise<ActorSearchResult[]> {
@@ -223,10 +230,27 @@ export interface ThreatCategorySummary {
 export interface ActorThreatActivity {
   summary: ThreatCategorySummary[];
   activities: ThreatActivity[];
+  activities_total: number;
+  page: number;
+  page_size: number;
 }
 
-export async function getActorThreatActivity(actorId: string): Promise<ActorThreatActivity> {
-  return request<ActorThreatActivity>(`/api/actors/${actorId}/threat-activity`);
+/** `activities` is server-side paginated and optionally filtered to one
+ * category — see the endpoint's docstring. Called with no args, it fetches
+ * page 1 of ALL categories (enough to render the summary + a first page);
+ * ActorProfileView re-calls with `category` set when the investigator
+ * expands a specific category. */
+export async function getActorThreatActivity(
+  actorId: string,
+  opts: { category?: string; page?: number; pageSize?: number } = {}
+): Promise<ActorThreatActivity> {
+  const params = new URLSearchParams();
+  if (opts.category) params.set("category", opts.category);
+  params.set("page", String(opts.page ?? 1));
+  params.set("page_size", String(opts.pageSize ?? 50));
+  return request<ActorThreatActivity>(
+    `/api/actors/${actorId}/threat-activity?${params.toString()}`
+  );
 }
 
 export interface AttributionSignal {
@@ -314,6 +338,30 @@ export interface JobStatus {
 
 export async function getJobStatus(taskId: string): Promise<JobStatus> {
   return request<JobStatus>(`/api/jobs/${taskId}`);
+}
+
+export interface AnalysisJobRecord {
+  id: string;
+  job_type: string;
+  status: string;
+  target: string;
+  task_id: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface PaginatedAnalysisJobs {
+  items: AnalysisJobRecord[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+/** Real, persisted job history (app.models.actor.AnalysisJob) — populated
+ * only for the Celery-triggered reanalyze_all path (POST /api/leads), not
+ * CLI-driven ingestion. See that model's docstring. */
+export async function listRecentJobs(page = 1, pageSize = 20): Promise<PaginatedAnalysisJobs> {
+  return request<PaginatedAnalysisJobs>(`/api/jobs?page=${page}&page_size=${pageSize}`);
 }
 
 /** Polls a job until it reaches a terminal state (SUCCESS/FAILURE) or the

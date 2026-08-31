@@ -17,8 +17,8 @@ export default function ReportsView({ onSelectActor }: { onSelectActor: (id: str
 
   useEffect(() => {
     setError(null);
-    listActors()
-      .then(setActors)
+    listActors(1, 200)
+      .then((r) => setActors(r.items))
       .catch((err) => setError(err instanceof ApiError ? err.message : "Failed to load actors"));
   }, [retryToken]);
 

@@ -94,7 +94,9 @@ def test_query_and_export_flow(client):
 
     response = test_client.get("/api/actors", headers=headers)
     assert response.status_code == 200
-    assert len(response.json()) == 1
+    body = response.json()
+    assert body["total"] == 1
+    assert len(body["items"]) == 1
 
     response = test_client.get("/api/actors/search?q=shadow", headers=headers)
     assert response.status_code == 200
@@ -315,6 +317,37 @@ def test_actor_endpoints_require_auth(client):
     assert test_client.get(f"/api/export/{actor_id}/json").status_code == 401
 
 
+def test_list_actors_is_paginated_server_side(client):
+    """GET /api/actors — with real actor counts (141 in the live dev DB)
+    already past the old hardcoded limit=100, this must be real server-side
+    pagination with an accurate total, not a client-side-hidden full dump."""
+    test_client, SessionLocal = client
+    headers = _auth_headers(test_client)
+
+    db = SessionLocal()
+    for i in range(5):
+        db.add(Actor(label=f"Actor: paged_{i}", confidence_score=0.1 * i))
+    db.commit()
+    db.close()
+
+    response = test_client.get("/api/actors?page=1&page_size=2", headers=headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 5
+    assert body["page"] == 1
+    assert body["page_size"] == 2
+    assert len(body["items"]) == 2
+
+    response2 = test_client.get("/api/actors?page=3&page_size=2", headers=headers)
+    body2 = response2.json()
+    assert len(body2["items"]) == 1  # 5 actors, page_size 2 -> last page has 1
+
+    # No overlap between pages.
+    ids_page1 = {a["id"] for a in body["items"]}
+    ids_page3 = {a["id"] for a in body2["items"]}
+    assert ids_page1.isdisjoint(ids_page3)
+
+
 def test_actor_threat_activity_endpoint_returns_classified_activity(client):
     """GET /api/actors/{id}/threat-activity — the endpoint
     ActorProfileView's "Observed Threat Categories" section reads from."""
@@ -380,6 +413,83 @@ def test_actor_threat_activity_endpoint_empty_for_actor_with_no_activity(client)
     body = response.json()
     assert body["summary"] == []
     assert body["activities"] == []
+
+
+def test_actor_threat_activity_is_paginated_and_category_filtered(client):
+    """GET /api/actors/{id}/threat-activity — summary always reflects ALL
+    activities; `activities` is paginated and can be filtered to one
+    category (see ActorProfileView's lazy per-category evidence fetch)."""
+    test_client, SessionLocal = client
+    headers = _auth_headers(test_client)
+    actor_id = _seed_actor(SessionLocal)
+
+    import uuid as uuid_mod
+
+    from app.models.actor import RawActivity, RawPersona, ThreatActivity
+
+    db = SessionLocal()
+    persona = RawPersona(username="shadow_vendor", platform="mock_marketplace_1")
+    db.add(persona)
+    db.flush()
+    actor_uuid = uuid_mod.UUID(actor_id)
+    for i in range(3):
+        ra = RawActivity(
+            raw_persona_id=persona.id, platform="mock_marketplace_1",
+            source_record_id=f"mock_marketplace_1:listing:{i}", text=f"stolen credentials {i}",
+        )
+        db.add(ra)
+        db.flush()
+        db.add(
+            ThreatActivity(
+                raw_activity_id=ra.id, actor_id=actor_uuid, persona_username="shadow_vendor",
+                source_platform="mock_marketplace_1", source_record_id=ra.source_record_id,
+                category="credential_data_theft", classification_reason="test",
+                classification_method="keyword_rule", classification_confidence="medium",
+            )
+        )
+    other_ra = RawActivity(
+        raw_persona_id=persona.id, platform="mock_marketplace_1",
+        source_record_id="mock_marketplace_1:listing:other", text="hire a hacker",
+    )
+    db.add(other_ra)
+    db.flush()
+    db.add(
+        ThreatActivity(
+            raw_activity_id=other_ra.id, actor_id=actor_uuid, persona_username="shadow_vendor",
+            source_platform="mock_marketplace_1", source_record_id=other_ra.source_record_id,
+            category="hacking_services", classification_reason="test",
+            classification_method="keyword_rule", classification_confidence="medium",
+        )
+    )
+    db.commit()
+    db.close()
+
+    # Summary always covers all 4 activities across both categories.
+    response = test_client.get(f"/api/actors/{actor_id}/threat-activity", headers=headers)
+    body = response.json()
+    assert {s["category"]: s["activity_count"] for s in body["summary"]} == {
+        "credential_data_theft": 3,
+        "hacking_services": 1,
+    }
+
+    # Filtered + paginated: only credential_data_theft, page 1 of size 2.
+    response = test_client.get(
+        f"/api/actors/{actor_id}/threat-activity?category=credential_data_theft&page=1&page_size=2",
+        headers=headers,
+    )
+    body = response.json()
+    assert body["activities_total"] == 3
+    assert body["page"] == 1
+    assert body["page_size"] == 2
+    assert len(body["activities"]) == 2
+    assert all(a["category"] == "credential_data_theft" for a in body["activities"])
+
+    # Page 2 has the remaining one.
+    response = test_client.get(
+        f"/api/actors/{actor_id}/threat-activity?category=credential_data_theft&page=2&page_size=2",
+        headers=headers,
+    )
+    assert len(response.json()["activities"]) == 1
 
 
 def test_json_export_includes_threat_categories(client):
