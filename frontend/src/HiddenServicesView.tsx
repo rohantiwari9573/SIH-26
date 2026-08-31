@@ -117,6 +117,8 @@ export default function HiddenServicesView({
                 controlled target (see docs/ETHICS.md) or submit a lead with a confirmed
                 onion_address.
               </p>
+            ) : rows!.length === 0 ? (
+              <p className="muted">No findings match "{query}".</p>
             ) : (
               <table>
                 <thead>

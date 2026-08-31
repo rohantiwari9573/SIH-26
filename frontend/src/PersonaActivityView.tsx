@@ -139,6 +139,8 @@ export default function PersonaActivityView({
               <SkeletonRows count={5} />
             ) : data.records.length === 0 ? (
               <p className="muted">No records ingested yet for this source set.</p>
+            ) : records!.length === 0 ? (
+              <p className="muted">No records match "{query}".</p>
             ) : (
               <table>
                 <thead>
