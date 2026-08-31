@@ -4,6 +4,7 @@ export interface ActorSearchResult {
   id: string;
   label: string;
   confidence_score: number;
+  updated_at: string;
   matched_identifier?: string | null;
 }
 
@@ -430,6 +431,98 @@ export async function getBreachRecords(limit = 50): Promise<BreachRecord[]> {
 
 export async function getSourceRegistry(): Promise<DataSourceStatus[]> {
   return request<DataSourceStatus[]>("/api/dashboard/source-registry");
+}
+
+export interface HiddenServiceCorrelation {
+  source: string;
+  matched_value: string;
+  description: string;
+}
+
+export interface HiddenServiceRow {
+  id: string;
+  onion_address: string;
+  finding_type: string;
+  detail: Record<string, unknown>;
+  resolved_ip: string | null;
+  discovered_at: string;
+  actor_id: string | null;
+  actor_label: string | null;
+  correlations: HiddenServiceCorrelation[];
+}
+
+export interface HiddenServicesSummary {
+  hidden_services: number;
+  infrastructure_findings: number;
+  correlations: number;
+  linked_actors: number;
+}
+
+export interface HiddenServices {
+  summary: HiddenServicesSummary;
+  rows: HiddenServiceRow[];
+}
+
+export async function getHiddenServices(limit = 100): Promise<HiddenServices> {
+  return request<HiddenServices>(`/api/dashboard/hidden-services?limit=${limit}`);
+}
+
+export interface PersonaActivityRecord {
+  identifier_type: string;
+  value: string;
+  source_platform: string;
+  actor_id: string | null;
+  actor_label: string | null;
+  last_seen: string;
+}
+
+export interface PersonaActivitySummary {
+  total_records: number;
+  unique_handles: number;
+  linked_actors: number;
+  pgp_keys: number;
+  wallets: number;
+  by_source: SourceBreakdownItem[];
+}
+
+export interface PersonaActivity {
+  summary: PersonaActivitySummary;
+  records: PersonaActivityRecord[];
+}
+
+export async function getIdentifierActivity(
+  platforms: string[],
+  limit = 200
+): Promise<PersonaActivity> {
+  const params = new URLSearchParams({ platforms: platforms.join(","), limit: String(limit) });
+  return request<PersonaActivity>(`/api/dashboard/identifier-activity?${params.toString()}`);
+}
+
+export interface Alert {
+  alert_type: "high_confidence_actor" | "new_linkage" | "correlation" | "infra_finding";
+  severity: "high" | "medium" | "low";
+  summary: string;
+  occurred_at: string;
+  actor_id: string | null;
+}
+
+export async function getAlerts(limit = 30): Promise<Alert[]> {
+  return request<Alert[]>(`/api/dashboard/alerts?limit=${limit}`);
+}
+
+export interface ComponentStatus {
+  name: string;
+  healthy: boolean;
+  detail: string | null;
+}
+
+export interface SystemStatus {
+  checked_at: string;
+  components: ComponentStatus[];
+}
+
+export async function getSystemStatus(): Promise<SystemStatus> {
+  return request<SystemStatus>("/api/dashboard/system-status");
 }
 
 export { ApiError };

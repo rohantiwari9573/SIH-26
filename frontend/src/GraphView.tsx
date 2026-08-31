@@ -116,7 +116,7 @@ function CheckboxGroup({
     <div style={{ position: "relative" }}>
       <button
         className="btn-ghost"
-        style={{ padding: "0.15rem 0.6rem", fontSize: "0.8rem" }}
+        style={{ padding: "0.15rem 0.6rem", fontSize: "0.86rem" }}
         onClick={() => setOpen((o) => !o)}
       >
         {label}
@@ -142,7 +142,7 @@ function CheckboxGroup({
                 display: "flex",
                 alignItems: "center",
                 gap: "0.4rem",
-                fontSize: "0.8rem",
+                fontSize: "0.86rem",
                 padding: "0.2rem 0",
                 cursor: "pointer",
               }}
@@ -259,7 +259,7 @@ export default function GraphView({
         flexWrap: "wrap",
         gap: "0.5rem",
         padding: "0 1rem 0.75rem",
-        fontSize: "0.8rem",
+        fontSize: "0.86rem",
       }}
     >
       <span className="muted">Depth</span>
@@ -267,7 +267,7 @@ export default function GraphView({
         <button
           key={d}
           className={depth === d ? "btn-secondary" : "btn-ghost"}
-          style={{ padding: "0.15rem 0.6rem", fontSize: "0.8rem" }}
+          style={{ padding: "0.15rem 0.6rem", fontSize: "0.86rem" }}
           onClick={() => setDepth(d)}
         >
           {d}
@@ -277,7 +277,7 @@ export default function GraphView({
       <select
         value={source}
         onChange={(e) => setSource(e.target.value)}
-        style={{ fontSize: "0.8rem", padding: "0.15rem 0.4rem" }}
+        style={{ fontSize: "0.86rem", padding: "0.15rem 0.4rem" }}
       >
         {SOURCE_OPTIONS.map((opt) => (
           <option key={opt.key} value={opt.key}>
@@ -298,12 +298,12 @@ export default function GraphView({
         onChange={setRelationshipTypes}
       />
       {filtersActive && (
-        <button className="btn-ghost" style={{ padding: "0.15rem 0.6rem", fontSize: "0.8rem" }} onClick={resetFilters}>
+        <button className="btn-ghost" style={{ padding: "0.15rem 0.6rem", fontSize: "0.86rem" }} onClick={resetFilters}>
           Reset Filters
         </button>
       )}
       {graph && (
-        <span className="muted" style={{ marginLeft: "auto", fontSize: "0.78rem" }}>
+        <span className="muted" style={{ marginLeft: "auto", fontSize: "0.84rem" }}>
           Nodes: {graph.node_count} &nbsp;·&nbsp; Relationships: {graph.edge_count}
         </span>
       )}
@@ -464,10 +464,15 @@ export default function GraphView({
       </div>
 
       {/* Evidence drawer — always rendered so the investigator sees the
-          "select something" prompt rather than the panel appearing/disappearing. */}
-      <div className="section-card" style={{ margin: "0 1rem 1rem" }}>
+          "select something" prompt rather than the panel appearing/disappearing.
+          Distinct surface (surface-2, not the outer card's surface-1) so it
+          reads as its own panel rather than blending into the graph card. */}
+      <div
+        className="section-card"
+        style={{ margin: "1.1rem 1rem 1rem", background: "var(--surface-2)" }}
+      >
         <div className="section-heading">
-          <h3 style={{ fontSize: "0.9rem" }}>Evidence</h3>
+          <h3 style={{ fontSize: "1rem" }}>Evidence</h3>
         </div>
         {!selectedNode && !selectedEdge && (
           <p className="muted">Select a node or relationship to inspect evidence.</p>
@@ -536,7 +541,7 @@ export default function GraphView({
               <span className="muted">→ {selectedEdge.relationship.replace(/_/g, " ")} →</span>
               <span className="mono">{selectedEdge.target}</span>
             </div>
-            <p className="muted" style={{ fontSize: "0.8rem", marginBottom: "0.5rem" }}>
+            <p className="muted" style={{ fontSize: "0.86rem", marginBottom: "0.5rem" }}>
               WHY THIS RELATIONSHIP EXISTS
             </p>
             {(() => {

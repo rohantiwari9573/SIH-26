@@ -5,8 +5,9 @@ the data), the field is omitted rather than filled with a fake value; see
 StatCard's docstring."""
 from datetime import datetime, timedelta, timezone
 
+import redis
 from fastapi import APIRouter, Depends
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_current_user
@@ -16,27 +17,40 @@ from app.models.actor import Actor, AttributionEdge, Identifier, InfraFinding, R
 from app.models.external import (
     AbuseReport,
     BreachRecord,
+    CorrelationEvidence,
     MaliciousUrl,
     MalwareSample,
     ThreatEvent,
     TorRelay,
 )
 from app.schemas.dashboard import (
+    AlertOut,
     BreachRecordOut,
+    ComponentStatusOut,
     DashboardStatsOut,
     DataSourceStatusOut,
     HibpLookupOut,
+    HiddenServiceCorrelationOut,
+    HiddenServiceRowOut,
+    HiddenServicesOut,
+    HiddenServicesSummaryOut,
     InfraFindingRowOut,
+    PersonaActivityOut,
+    PersonaActivityRecordOut,
+    PersonaActivitySummaryOut,
     SourceBreakdownItem,
     StatCard,
+    SystemStatusOut,
     ThreatEventOut,
     TimelineEventOut,
     TopLinkOut,
     TopLinkSignal,
     TorRelayOut,
 )
+from app.services.graph.neo4j_client import get_neo4j_client
 from app.services.hibp_lookup import check_email_breaches
 from app.services.scoring import WEIGHTS
+from app.workers.celery_app import celery_app
 
 router = APIRouter(
     prefix="/api/dashboard", tags=["dashboard"], dependencies=[Depends(get_current_user)]
@@ -365,3 +379,290 @@ def hibp_lookup(email: str):
         breach_names=result.breach_names,
         error=result.error,
     )
+
+
+# PS-26151 capability A: Tor hidden-service / infrastructure deanonymization.
+# Backs the Hidden Services page — every row here is a real InfraFinding
+# from app.services.infra_scan, enriched with whatever real correlation
+# evidence (app.services.correlation) points at that specific finding.
+@router.get("/hidden-services", response_model=HiddenServicesOut)
+def get_hidden_services(limit: int = 100, db: Session = Depends(get_db)):
+    findings = (
+        db.query(InfraFinding)
+        .options(joinedload(InfraFinding.actor))
+        .order_by(InfraFinding.discovered_at.desc())
+        .limit(limit)
+        .all()
+    )
+    finding_ids = [f.id for f in findings]
+
+    # One grouped query for every finding's correlations, not one query per
+    # row — the InfraFinding <-> CorrelationEvidence relationship has no
+    # ORM-level back_populates (they live in separate modules), so this is
+    # a plain filtered query rather than a relationship eager-load.
+    correlations_by_finding: dict = {}
+    if finding_ids:
+        for ev in (
+            db.query(CorrelationEvidence)
+            .filter(CorrelationEvidence.infra_finding_id.in_(finding_ids))
+            .all()
+        ):
+            correlations_by_finding.setdefault(ev.infra_finding_id, []).append(ev)
+
+    rows = [
+        HiddenServiceRowOut(
+            id=str(f.id),
+            onion_address=f.onion_address,
+            finding_type=f.finding_type,
+            detail=f.detail,
+            resolved_ip=f.resolved_ip,
+            discovered_at=f.discovered_at,
+            actor_id=str(f.actor_id) if f.actor_id else None,
+            actor_label=f.actor.label if f.actor else None,
+            correlations=[
+                HiddenServiceCorrelationOut(
+                    source=ev.source, matched_value=ev.matched_value, description=ev.description
+                )
+                for ev in correlations_by_finding.get(f.id, [])
+            ],
+        )
+        for f in findings
+    ]
+
+    total_findings = db.query(InfraFinding).count()
+    distinct_onions = db.query(func.count(func.distinct(InfraFinding.onion_address))).scalar() or 0
+    total_correlations = (
+        db.query(CorrelationEvidence)
+        .filter(CorrelationEvidence.infra_finding_id.isnot(None))
+        .count()
+    )
+    linked_actors = (
+        db.query(func.count(func.distinct(InfraFinding.actor_id)))
+        .filter(InfraFinding.actor_id.isnot(None))
+        .scalar()
+        or 0
+    )
+
+    return HiddenServicesOut(
+        summary=HiddenServicesSummaryOut(
+            hidden_services=distinct_onions,
+            infrastructure_findings=total_findings,
+            correlations=total_correlations,
+            linked_actors=linked_actors,
+        ),
+        rows=rows,
+    )
+
+
+# PS-26151 capability B: cross-platform threat-actor mapping. One generic,
+# platform-filtered view over Identifier reused by both the Marketplace
+# Intelligence and Forum Intelligence pages — the caller picks which real
+# source_platform values count as "marketplace" vs "forum" (see
+# MARKETPLACE_PLATFORMS/FORUM_PLATFORMS in the frontend), Argus never
+# invents a marketplace/forum taxonomy the database doesn't already have.
+@router.get("/identifier-activity", response_model=PersonaActivityOut)
+def get_identifier_activity(platforms: str, limit: int = 200, db: Session = Depends(get_db)):
+    platform_list = [p.strip() for p in platforms.split(",") if p.strip()]
+    if not platform_list:
+        return PersonaActivityOut(
+            summary=PersonaActivitySummaryOut(
+                total_records=0, unique_handles=0, linked_actors=0,
+                pgp_keys=0, wallets=0, by_source=[],
+            ),
+            records=[],
+        )
+
+    base_filter = Identifier.source_platform.in_(platform_list)
+
+    rows = (
+        db.query(Identifier)
+        .options(joinedload(Identifier.actor))
+        .filter(base_filter)
+        .order_by(Identifier.last_seen.desc())
+        .limit(limit)
+        .all()
+    )
+    records = [
+        PersonaActivityRecordOut(
+            identifier_type=r.identifier_type,
+            value=r.value,
+            source_platform=r.source_platform,
+            actor_id=str(r.actor_id) if r.actor_id else None,
+            actor_label=r.actor.label if r.actor else None,
+            last_seen=r.last_seen,
+        )
+        for r in rows
+    ]
+
+    total_records = db.query(Identifier).filter(base_filter).count()
+    unique_handles = (
+        db.query(Identifier)
+        .filter(base_filter, Identifier.identifier_type == "username")
+        .count()
+    )
+    pgp_keys = (
+        db.query(Identifier).filter(base_filter, Identifier.identifier_type == "pgp_key").count()
+    )
+    wallets = (
+        db.query(Identifier).filter(base_filter, Identifier.identifier_type == "wallet").count()
+    )
+    linked_actors = (
+        db.query(func.count(func.distinct(Identifier.actor_id)))
+        .filter(base_filter, Identifier.actor_id.isnot(None))
+        .scalar()
+        or 0
+    )
+    by_source_rows = (
+        db.query(Identifier.source_platform, func.count(Identifier.id))
+        .filter(base_filter)
+        .group_by(Identifier.source_platform)
+        .order_by(func.count(Identifier.id).desc())
+        .all()
+    )
+
+    return PersonaActivityOut(
+        summary=PersonaActivitySummaryOut(
+            total_records=total_records,
+            unique_handles=unique_handles,
+            linked_actors=linked_actors,
+            pgp_keys=pgp_keys,
+            wallets=wallets,
+            by_source=[
+                SourceBreakdownItem(source_platform=p, count=c) for p, c in by_source_rows
+            ],
+        ),
+        records=records,
+    )
+
+
+# Real derived alerts — every row is sourced from an existing, already-real
+# table (Actor/AttributionEdge/CorrelationEvidence/InfraFinding). `severity`
+# is computed only from fields already persisted on that row (confidence
+# tier, edge_type, finding_type); nothing here is randomly generated or
+# invented to populate the page. See AlertOut's docstring.
+@router.get("/alerts", response_model=list[AlertOut])
+def get_alerts(limit: int = 30, db: Session = Depends(get_db)):
+    alerts: list[AlertOut] = []
+
+    high_conf_actors = (
+        db.query(Actor)
+        .filter(Actor.confidence_score >= HIGH_CONFIDENCE_THRESHOLD)
+        .order_by(Actor.updated_at.desc())
+        .limit(limit)
+        .all()
+    )
+    for actor in high_conf_actors:
+        alerts.append(
+            AlertOut(
+                alert_type="high_confidence_actor",
+                severity="high",
+                summary=(
+                    f"High-confidence attribution: {actor.label} "
+                    f"({actor.confidence_score * 100:.0f}%)"
+                ),
+                occurred_at=actor.updated_at,
+                actor_id=str(actor.id),
+            )
+        )
+
+    edges = (
+        db.query(AttributionEdge).order_by(AttributionEdge.created_at.desc()).limit(limit).all()
+    )
+    for edge in edges:
+        severity = "high" if edge.edge_type.startswith("shared_") else "medium"
+        alerts.append(
+            AlertOut(
+                alert_type="new_linkage",
+                severity=severity,
+                summary=(
+                    f"New linkage: {edge.username_a} ({edge.platform_a}) <-> "
+                    f"{edge.username_b} ({edge.platform_b}) — {edge.edge_type}"
+                ),
+                occurred_at=edge.created_at,
+                actor_id=str(edge.actor_id),
+            )
+        )
+
+    correlations = (
+        db.query(CorrelationEvidence)
+        .order_by(CorrelationEvidence.ingested_at.desc())
+        .limit(limit)
+        .all()
+    )
+    for ev in correlations:
+        alerts.append(
+            AlertOut(
+                alert_type="correlation",
+                severity="medium",
+                summary=f"{ev.source}: {ev.matched_value} — {ev.description}",
+                occurred_at=ev.ingested_at,
+                actor_id=str(ev.actor_id) if ev.actor_id else None,
+            )
+        )
+
+    findings = (
+        db.query(InfraFinding).order_by(InfraFinding.discovered_at.desc()).limit(limit).all()
+    )
+    for finding in findings:
+        alerts.append(
+            AlertOut(
+                alert_type="infra_finding",
+                severity="high" if finding.finding_type == "ssl_leak" else "medium",
+                summary=(
+                    f"Infrastructure finding: {finding.finding_type} "
+                    f"on {finding.onion_address}"
+                ),
+                occurred_at=finding.discovered_at,
+                actor_id=str(finding.actor_id) if finding.actor_id else None,
+            )
+        )
+
+    alerts.sort(key=lambda a: a.occurred_at, reverse=True)
+    return alerts[:limit]
+
+
+# PS-26151 "autonomous/continuous intelligence pipeline" — real, live
+# component health, not a static/fabricated status page. Every check is a
+# genuine round-trip to the dependency at request time.
+@router.get("/system-status", response_model=SystemStatusOut)
+def get_system_status(db: Session = Depends(get_db)):
+    components: list[ComponentStatusOut] = []
+
+    try:
+        db.execute(text("SELECT 1"))
+        components.append(ComponentStatusOut(name="PostgreSQL", healthy=True))
+    except Exception as exc:  # noqa: BLE001 — genuinely any failure means "unhealthy"
+        components.append(
+            ComponentStatusOut(name="PostgreSQL", healthy=False, detail=str(exc)[:200])
+        )
+
+    try:
+        client = get_neo4j_client()
+        with client._driver.session() as session:
+            session.run("RETURN 1").consume()
+        components.append(ComponentStatusOut(name="Neo4j", healthy=True))
+    except Exception as exc:  # noqa: BLE001
+        components.append(ComponentStatusOut(name="Neo4j", healthy=False, detail=str(exc)[:200]))
+
+    try:
+        redis.from_url(settings.redis_url, socket_connect_timeout=2).ping()
+        components.append(ComponentStatusOut(name="Redis", healthy=True))
+    except Exception as exc:  # noqa: BLE001
+        components.append(ComponentStatusOut(name="Redis", healthy=False, detail=str(exc)[:200]))
+
+    try:
+        pong = celery_app.control.inspect(timeout=1.5).ping() or {}
+        worker_count = len(pong)
+        components.append(
+            ComponentStatusOut(
+                name="Celery Workers",
+                healthy=worker_count > 0,
+                detail=f"{worker_count} worker(s) responding",
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        components.append(
+            ComponentStatusOut(name="Celery Workers", healthy=False, detail=str(exc)[:200])
+        )
+
+    return SystemStatusOut(checked_at=_now(), components=components)

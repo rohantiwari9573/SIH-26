@@ -161,7 +161,7 @@ export default function ActorProfileView({
         </div>
         <div style={{ textAlign: "right" }}>
           <ConfidenceBadge score={profile.confidence_score} />
-          <div className="muted" style={{ fontSize: "0.78rem", marginTop: "0.2rem" }}>
+          <div className="muted" style={{ fontSize: "0.84rem", marginTop: "0.3rem" }}>
             {confidenceBucket(profile.confidence_score)}
           </div>
         </div>
@@ -353,7 +353,7 @@ export default function ActorProfileView({
                       {edge.username_b} <span className="muted">({edge.platform_b})</span>
                     </td>
                     <td>{EDGE_TYPE_LABELS[edge.edge_type] ?? edge.edge_type}</td>
-                    <td>{(edge.weight * 100).toFixed(0)}%</td>
+                    <td className="strength-value">{(edge.weight * 100).toFixed(0)}%</td>
                   </tr>
                 ))}
               </tbody>

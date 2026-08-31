@@ -33,7 +33,7 @@ const PIPELINE_STEPS = [
 function ActorSummary({ label, actor }: { label: string; actor: ActorSearchResult | null }) {
   return (
     <div className="section-card" style={{ flex: 1 }}>
-      <div className="muted" style={{ fontSize: "0.75rem", marginBottom: "0.3rem" }}>
+      <div className="muted" style={{ fontSize: "0.8rem", marginBottom: "0.3rem" }}>
         {label}
       </div>
       {actor ? (

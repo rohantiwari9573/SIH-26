@@ -80,9 +80,7 @@ function SourceTable({ sources, live }: { sources: DataSourceStatus[]; live: boo
                 : "—"}
             </td>
             <td>{CATEGORY_LABELS[s.category]}</td>
-            <td className="muted" style={{ fontSize: "0.82rem" }}>
-              {SOURCE_PURPOSE[s.key] ?? "—"}
-            </td>
+            <td className="muted">{SOURCE_PURPOSE[s.key] ?? "—"}</td>
           </tr>
         ))}
       </tbody>

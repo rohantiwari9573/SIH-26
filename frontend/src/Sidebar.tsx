@@ -11,7 +11,6 @@ import {
   PlayIcon,
   RssIcon,
   ServerIcon,
-  SlidersIcon,
   StoreIcon,
   UserIcon,
 } from "./icons";
@@ -21,8 +20,9 @@ interface NavItem {
   key: View["name"];
   label: string;
   icon: JSX.Element;
-  /** Items without a real, working backend view render through the shared
-   * NotAvailableView instead of pretending to be a live feature. */
+  /** Every item is currently backed by a real, working view — kept as a
+   * gate rather than removed so a future item with no honest data behind
+   * it still has somewhere to degrade to instead of pretending to be live. */
   available: boolean;
 }
 
@@ -36,21 +36,20 @@ const INVESTIGATION: NavItem[] = [
 
 const COLLECTION: NavItem[] = [
   { key: "sources", label: "Sources & Feeds", icon: <RssIcon width={17} height={17} />, available: true },
-  { key: "hidden-services", label: "Hidden Services", icon: <GlobeIcon width={17} height={17} />, available: false },
-  { key: "marketplaces", label: "Marketplaces", icon: <StoreIcon width={17} height={17} />, available: false },
-  { key: "forums", label: "Forums", icon: <MessageIcon width={17} height={17} />, available: false },
+  { key: "hidden-services", label: "Hidden Services", icon: <GlobeIcon width={17} height={17} />, available: true },
+  { key: "marketplaces", label: "Marketplaces", icon: <StoreIcon width={17} height={17} />, available: true },
+  { key: "forums", label: "Forums", icon: <MessageIcon width={17} height={17} />, available: true },
 ];
 
 const INTELLIGENCE: NavItem[] = [
-  { key: "alerts", label: "Alerts", icon: <FlagIcon width={17} height={17} />, available: false },
+  { key: "alerts", label: "Alerts", icon: <FlagIcon width={17} height={17} />, available: true },
   { key: "indicators", label: "Indicators", icon: <NetworkIcon width={17} height={17} />, available: true },
-  { key: "reports", label: "Reports", icon: <ClipboardIcon width={17} height={17} />, available: false },
+  { key: "reports", label: "Reports", icon: <ClipboardIcon width={17} height={17} />, available: true },
   { key: "demo", label: "Controlled Demo", icon: <PlayIcon width={17} height={17} />, available: true },
 ];
 
 const SYSTEM: NavItem[] = [
-  { key: "jobs", label: "Jobs & Scans", icon: <ActivityIcon width={17} height={17} />, available: false },
-  { key: "settings", label: "Settings", icon: <SlidersIcon width={17} height={17} />, available: false },
+  { key: "jobs", label: "Jobs & Scans", icon: <ActivityIcon width={17} height={17} />, available: true },
 ];
 
 function Section({

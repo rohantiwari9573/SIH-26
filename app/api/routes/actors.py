@@ -97,6 +97,7 @@ def search_actors(q: str, db: Session = Depends(get_db)):
                 id=actor.id,
                 label=actor.label,
                 confidence_score=actor.confidence_score,
+                updated_at=actor.updated_at,
                 matched_identifier=identifier.value,
             )
     return list(results.values())
@@ -211,6 +212,8 @@ def get_actor_correlation_evidence(actor_id: uuid.UUID, db: Session = Depends(ge
 def list_actors(db: Session = Depends(get_db)):
     actors = db.query(Actor).order_by(Actor.confidence_score.desc()).limit(100).all()
     return [
-        ActorSearchResult(id=a.id, label=a.label, confidence_score=a.confidence_score)
+        ActorSearchResult(
+            id=a.id, label=a.label, confidence_score=a.confidence_score, updated_at=a.updated_at
+        )
         for a in actors
     ]

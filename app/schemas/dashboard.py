@@ -122,3 +122,94 @@ class HibpLookupOut(BaseModel):
     email: str
     breach_names: list[str] | None = None
     error: str | None = None
+
+
+class HiddenServiceCorrelationOut(BaseModel):
+    """One deterministic external-intel match against this specific finding
+    — a subset of CorrelationEvidence scoped to infra_finding_id, not a
+    separate fabricated concept."""
+
+    source: str
+    matched_value: str
+    description: str
+
+
+class HiddenServiceRowOut(BaseModel):
+    """One InfraFinding, enriched with whatever real correlation evidence
+    (app.services.correlation) points at it — the PS's 'hidden-service
+    infrastructure correlation' capability, expressed with data Argus
+    actually holds rather than a fabricated per-relay claim."""
+
+    id: str
+    onion_address: str
+    finding_type: str
+    detail: dict
+    resolved_ip: str | None
+    discovered_at: datetime
+    actor_id: str | None
+    actor_label: str | None
+    correlations: list[HiddenServiceCorrelationOut]
+
+
+class HiddenServicesSummaryOut(BaseModel):
+    hidden_services: int  # distinct onion addresses with at least one finding
+    infrastructure_findings: int  # total InfraFinding rows
+    correlations: int  # total CorrelationEvidence rows tied to an infra finding
+    linked_actors: int  # distinct actors with at least one finding
+
+
+class HiddenServicesOut(BaseModel):
+    summary: HiddenServicesSummaryOut
+    rows: list[HiddenServiceRowOut]
+
+
+class PersonaActivityRecordOut(BaseModel):
+    """One Identifier row, in the shape Marketplace/Forum Intelligence need
+    — real rows from the same table Actor Profile's Identifiers section
+    reads, just pre-filtered to a caller-chosen set of source platforms."""
+
+    identifier_type: str
+    value: str
+    source_platform: str
+    actor_id: str | None
+    actor_label: str | None
+    last_seen: datetime
+
+
+class PersonaActivitySummaryOut(BaseModel):
+    total_records: int
+    unique_handles: int
+    linked_actors: int
+    pgp_keys: int
+    wallets: int
+    by_source: list[SourceBreakdownItem]
+
+
+class PersonaActivityOut(BaseModel):
+    summary: PersonaActivitySummaryOut
+    records: list[PersonaActivityRecordOut]
+
+
+class AlertOut(BaseModel):
+    """A real, already-persisted event reframed for investigator scanning —
+    never a synthetic notification. `severity` is computed purely from real
+    fields already on the underlying row (confidence_score, edge_type,
+    finding_type), the same values the Dashboard/Actor Profile already
+    display; it is not a new judgment invented for this view."""
+
+    alert_type: str  # high_confidence_actor | new_linkage | correlation | infra_finding
+    severity: str  # high | medium | low
+    summary: str
+    occurred_at: datetime
+    actor_id: str | None = None
+
+
+class ComponentStatusOut(BaseModel):
+    name: str
+    healthy: bool
+    detail: str | None = None
+
+
+class SystemStatusOut(BaseModel):
+    checked_at: datetime
+    components: list[ComponentStatusOut]

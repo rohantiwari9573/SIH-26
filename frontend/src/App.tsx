@@ -11,10 +11,19 @@ import TimelineView from "./TimelineView";
 import AttributionView from "./AttributionView";
 import SourcesView from "./SourcesView";
 import DemoScenarioView from "./DemoScenarioView";
-import NotAvailableView from "./NotAvailableView";
+import HiddenServicesView from "./HiddenServicesView";
+import MarketplacesView from "./MarketplacesView";
+import ForumsView from "./ForumsView";
+import AlertsView from "./AlertsView";
+import ReportsView from "./ReportsView";
+import JobsScansView from "./JobsScansView";
 import Sidebar from "./Sidebar";
 import { EyeIcon, LogOutIcon, PlusIcon } from "./icons";
 
+// Settings was deliberately removed rather than implemented: Argus has no
+// persisted, user-configurable application setting anywhere (API keys and
+// graph defaults are env/code-level, not DB-backed), so a Settings page
+// would only ever hold meaningless toggles — see the Phase 5 audit notes.
 export type View =
   | { name: "dashboard" }
   | { name: "search" }
@@ -31,39 +40,7 @@ export type View =
   | { name: "forums" }
   | { name: "alerts" }
   | { name: "reports" }
-  | { name: "jobs" }
-  | { name: "settings" };
-
-const NOT_AVAILABLE_COPY: Partial<Record<View["name"], { title: string; reason: string }>> = {
-  "hidden-services": {
-    title: "Hidden Services",
-    reason: "Covered today under Infrastructure findings on each actor's profile page; a dedicated cross-actor view isn't built yet.",
-  },
-  marketplaces: {
-    title: "Marketplaces",
-    reason: "See the \"Top Data Sources\" panel on the Dashboard for a real breakdown by source platform — a dedicated marketplace management page isn't built yet.",
-  },
-  forums: {
-    title: "Forums",
-    reason: "No forum-specific data source is connected yet.",
-  },
-  alerts: {
-    title: "Alerts",
-    reason: "No alerting engine exists yet — nothing here would be real.",
-  },
-  reports: {
-    title: "Reports",
-    reason: "Use \"Export CSV / JSON / Report\" on any actor's profile page — a dedicated report library isn't built yet.",
-  },
-  jobs: {
-    title: "Jobs & Scans",
-    reason: "Analysis jobs are tracked per-submission (poll /api/jobs/{task_id}) but there's no persisted job history to list yet.",
-  },
-  settings: {
-    title: "Settings",
-    reason: "No account/settings management is built yet beyond login and logout.",
-  },
-};
+  | { name: "jobs" };
 
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(isLoggedIn());
@@ -128,12 +105,12 @@ export default function App() {
           {view.name === "indicators" && <IndicatorsView />}
           {view.name === "sources" && <SourcesView />}
           {view.name === "demo" && <DemoScenarioView onSelectActor={selectActor} />}
-          {NOT_AVAILABLE_COPY[view.name] && (
-            <NotAvailableView
-              title={NOT_AVAILABLE_COPY[view.name]!.title}
-              reason={NOT_AVAILABLE_COPY[view.name]!.reason}
-            />
-          )}
+          {view.name === "hidden-services" && <HiddenServicesView onSelectActor={selectActor} />}
+          {view.name === "marketplaces" && <MarketplacesView onSelectActor={selectActor} />}
+          {view.name === "forums" && <ForumsView onSelectActor={selectActor} />}
+          {view.name === "alerts" && <AlertsView onSelectActor={selectActor} />}
+          {view.name === "reports" && <ReportsView onSelectActor={selectActor} />}
+          {view.name === "jobs" && <JobsScansView />}
         </main>
       </div>
     </div>

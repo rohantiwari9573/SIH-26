@@ -90,6 +90,7 @@ class ActorSearchResult(BaseModel):
     id: uuid.UUID
     label: str
     confidence_score: float
+    updated_at: datetime
     matched_identifier: str | None = None
 
 
