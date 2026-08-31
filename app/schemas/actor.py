@@ -114,6 +114,44 @@ class AttributionBreakdownOut(BaseModel):
     sources: list[str]
 
 
+class ThreatActivityOut(BaseModel):
+    """One classified activity (a single real listing/post) supporting a
+    threat category for this actor — see app.models.actor.ThreatActivity.
+    Answers who/what/where/when/from-which-source/what-evidence/what-
+    category/how-confident in one row; never fed into confidence_score."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    actor_id: uuid.UUID | None
+    persona_username: str
+    source_platform: str
+    source_record_id: str
+    title: str | None
+    observed_at: datetime | None
+    category: str
+    category_label: str
+    classification_reason: str
+    classification_method: str
+    classification_confidence: str
+
+
+class ThreatCategorySummary(BaseModel):
+    """One category's aggregation across an actor's classified activities —
+    the ActorProfileView "Threat Activity" section reads this, not the raw
+    ThreatActivityOut list, for its top-level counts."""
+
+    category: str
+    category_label: str
+    activity_count: int
+    sources: list[str]
+
+
+class ActorThreatActivityOut(BaseModel):
+    summary: list[ThreatCategorySummary]
+    activities: list[ThreatActivityOut]
+
+
 class CorrelationEvidenceOut(BaseModel):
     """One deterministic match between a live/feed source and this actor's
     known infrastructure — see app.services.correlation. Enrichment, not an

@@ -15,6 +15,7 @@ from app.models.actor import Actor
 from app.models.external import CorrelationEvidence
 from app.schemas.actor import ActorProfileOut
 from app.services.attribution_explain import explain_attribution
+from app.services.threat_activity import get_actor_threat_activities, summarize_by_category
 
 router = APIRouter(prefix="/api/export", tags=["export"], dependencies=[Depends(get_current_user)])
 
@@ -73,6 +74,31 @@ def _is_synthetic(actor: Actor) -> bool:
 def export_json(actor_id: uuid.UUID, db: Session = Depends(get_db)):
     actor = _load_actor(actor_id, db)
     payload = ActorProfileOut.model_validate(actor).model_dump(mode="json")
+
+    threat_activities = get_actor_threat_activities(db, actor_id)
+    payload["threat_categories"] = [
+        {
+            "category": s.category,
+            "category_label": s.category_label,
+            "activity_count": s.activity_count,
+            "sources": s.sources,
+        }
+        for s in summarize_by_category(threat_activities)
+    ]
+    payload["threat_activities"] = [
+        {
+            "persona_username": a.persona_username,
+            "source_platform": a.source_platform,
+            "source_record_id": a.source_record_id,
+            "title": a.title,
+            "observed_at": a.observed_at.isoformat() if a.observed_at else None,
+            "category": a.category,
+            "classification_reason": a.classification_reason,
+            "classification_method": a.classification_method,
+            "classification_confidence": a.classification_confidence,
+        }
+        for a in threat_activities
+    ]
     return JSONResponse(content=payload)
 
 
@@ -120,6 +146,15 @@ def export_csv(actor_id: uuid.UUID, db: Session = Depends(get_db)):
                 _csv_safe(ev.matched_value),
                 _csv_safe(ev.source),
                 _csv_safe(ev.description),
+            ]
+        )
+    for activity in get_actor_threat_activities(db, actor_id):
+        writer.writerow(
+            [
+                _csv_safe(f"threat_activity_{activity.category}"),
+                _csv_safe(activity.title or activity.source_record_id),
+                _csv_safe(activity.source_platform),
+                _csv_safe(activity.classification_reason),
             ]
         )
     buffer.seek(0)
@@ -251,6 +286,24 @@ def export_report(actor_id: uuid.UUID, db: Session = Depends(get_db)):
         )
     for ev in correlation_evidence:
         y = _draw_line(pdf, 60, y, height, f"- [{ev.source}] {ev.matched_value}: {ev.description}")
+    y -= 15
+
+    threat_activities = get_actor_threat_activities(db, actor_id)
+    category_summary = summarize_by_category(threat_activities)
+    y = _draw_line(pdf, 50, y, height, "THREAT ACTIVITY", font=("Helvetica-Bold", 13))
+    y -= 5
+    if not category_summary:
+        y = _draw_line(
+            pdf, 60, y, height,
+            "No classifiable activity content found for this actor's known personas.",
+        )
+    for cat in category_summary:
+        noun = "activity" if cat.activity_count == 1 else "activities"
+        y = _draw_line(
+            pdf, 60, y, height,
+            f"- {cat.category_label}: {cat.activity_count} {noun}, "
+            f"sources: {', '.join(cat.sources)}",
+        )
     y -= 15
 
     y = _draw_line(pdf, 50, y, height, "RELATIONSHIPS", font=("Helvetica-Bold", 13))

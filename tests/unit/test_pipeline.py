@@ -10,7 +10,14 @@ from sqlalchemy.orm import sessionmaker
 
 import app.services.pipeline as pipeline
 from app.db.base import Base
-from app.models.actor import Actor, Identifier, InfraFinding, RawPersona
+from app.models.actor import (
+    Actor,
+    Identifier,
+    InfraFinding,
+    RawActivity,
+    RawPersona,
+    ThreatActivity,
+)
 
 
 def _session(tmp_path):
@@ -215,6 +222,184 @@ def test_advisory_lock_acquired_on_postgres(monkeypatch):
     assert db.execute.call_count == 1
     statement = db.execute.call_args_list[0].args[0]
     assert "pg_advisory_xact_lock" in statement.text
+
+
+def test_threat_activity_is_classified_and_linked_to_actor(tmp_path, monkeypatch):
+    """A RawActivity with a clear category signal produces a ThreatActivity
+    row linked to the actor its persona was clustered into, without altering
+    that actor's confidence_score (attribution and categorization are
+    separate pipelines — see app.services.pipeline)."""
+    _mock_neo4j(monkeypatch)
+    db = _session(tmp_path)
+
+    persona = RawPersona(username="vendor_a", platform="platform_1", wallet="w1")
+    db.add(persona)
+    db.commit()
+
+    db.add(
+        RawActivity(
+            raw_persona_id=persona.id,
+            platform="platform_1",
+            source_record_id="platform_1:listing:1",
+            title="Fresh dumps",
+            text="Offering stolen credentials, fully checked and verified.",
+        )
+    )
+    db.commit()
+
+    actors = pipeline.run_full_analysis(db)
+    actor = next(a for a in actors if "vendor_a" in a.label)
+    confidence_before = actor.confidence_score
+
+    activities = db.query(ThreatActivity).all()
+    assert len(activities) == 1
+    activity = activities[0]
+    assert activity.category == "credential_data_theft"
+    assert activity.actor_id == actor.id
+    assert activity.persona_username == "vendor_a"
+    assert activity.classification_method == "keyword_rule"
+
+    # Re-fetch the actor and confirm scoring wasn't touched by classification.
+    refreshed = db.query(Actor).filter(Actor.id == actor.id).first()
+    assert refreshed.confidence_score == confidence_before
+
+
+def test_ambiguous_activity_stays_unclassified_and_no_row_is_created(tmp_path, monkeypatch):
+    _mock_neo4j(monkeypatch)
+    db = _session(tmp_path)
+
+    persona = RawPersona(username="chatty_user", platform="platform_1")
+    db.add(persona)
+    db.commit()
+
+    db.add(
+        RawActivity(
+            raw_persona_id=persona.id,
+            platform="platform_1",
+            source_record_id="platform_1:post:1",
+            title=None,
+            text="Looking for a developer to help with a small project.",
+        )
+    )
+    db.commit()
+
+    pipeline.run_full_analysis(db)
+
+    assert db.query(ThreatActivity).count() == 0
+
+
+def test_multiple_activities_same_category_aggregate_under_one_actor(tmp_path, monkeypatch):
+    _mock_neo4j(monkeypatch)
+    db = _session(tmp_path)
+
+    persona = RawPersona(username="vendor_b", platform="platform_1")
+    db.add(persona)
+    db.commit()
+
+    db.add_all(
+        [
+            RawActivity(
+                raw_persona_id=persona.id,
+                platform="platform_1",
+                source_record_id="platform_1:listing:1",
+                text="Selling stolen credentials, verified working.",
+            ),
+            RawActivity(
+                raw_persona_id=persona.id,
+                platform="platform_1",
+                source_record_id="platform_1:listing:2",
+                text="More stolen accounts available, fresh batch.",
+            ),
+        ]
+    )
+    db.commit()
+
+    actors = pipeline.run_full_analysis(db)
+    actor = next(a for a in actors if "vendor_b" in a.label)
+
+    rows = (
+        db.query(ThreatActivity)
+        .filter(
+            ThreatActivity.actor_id == actor.id,
+            ThreatActivity.category == "credential_data_theft",
+        )
+        .all()
+    )
+    assert len(rows) == 2
+
+
+def test_same_category_from_multiple_sources_reports_both(tmp_path, monkeypatch):
+    _mock_neo4j(monkeypatch)
+    db = _session(tmp_path)
+
+    persona = RawPersona(username="vendor_c", platform="platform_1")
+    db.add(persona)
+    db.commit()
+
+    db.add_all(
+        [
+            RawActivity(
+                raw_persona_id=persona.id,
+                platform="platform_1",
+                source_record_id="platform_1:listing:1",
+                text="Stolen credentials for sale.",
+            ),
+            RawActivity(
+                raw_persona_id=persona.id,
+                platform="platform_2",
+                source_record_id="platform_2:post:1",
+                title="Leak",
+                text="unrelated text",
+                source_category="Leaks",
+            ),
+        ]
+    )
+    db.commit()
+
+    pipeline.run_full_analysis(db)
+
+    sources = {
+        row.source_platform
+        for row in db.query(ThreatActivity).all()
+    }
+    assert sources == {"platform_1", "platform_2"}
+
+
+def test_actor_with_no_activity_produces_no_threat_activity_rows(tmp_path, monkeypatch):
+    _mock_neo4j(monkeypatch)
+    db = _session(tmp_path)
+
+    db.add(RawPersona(username="silent_vendor", platform="platform_1", wallet="w1"))
+    db.commit()
+
+    pipeline.run_full_analysis(db)
+
+    assert db.query(ThreatActivity).count() == 0
+
+
+def test_rerun_does_not_duplicate_threat_activity_rows(tmp_path, monkeypatch):
+    _mock_neo4j(monkeypatch)
+    db = _session(tmp_path)
+
+    persona = RawPersona(username="vendor_d", platform="platform_1")
+    db.add(persona)
+    db.commit()
+    db.add(
+        RawActivity(
+            raw_persona_id=persona.id,
+            platform="platform_1",
+            source_record_id="platform_1:listing:1",
+            text="Selling stolen credentials.",
+        )
+    )
+    db.commit()
+
+    pipeline.run_full_analysis(db)
+    pipeline.run_full_analysis(db)
+
+    assert db.query(ThreatActivity).count() == 1
+    # RawActivity itself must survive across reruns — see its docstring.
+    assert db.query(RawActivity).count() == 1
 
 
 def test_advisory_lock_skipped_on_sqlite(monkeypatch):

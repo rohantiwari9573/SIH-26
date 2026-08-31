@@ -4,8 +4,10 @@ from app.models.actor import (  # noqa: F401
     AttributionEdge,
     Identifier,
     InfraFinding,
+    RawActivity,
     RawPersona,
     StyleProfile,
+    ThreatActivity,
 )
 from app.models.external import (  # noqa: F401
     AbuseReport,

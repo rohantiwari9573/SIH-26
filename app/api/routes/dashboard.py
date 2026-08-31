@@ -13,7 +13,14 @@ from sqlalchemy.orm import Session, joinedload
 from app.api.deps import get_current_user
 from app.core.config import settings
 from app.db.session import get_db
-from app.models.actor import Actor, AttributionEdge, Identifier, InfraFinding, RawPersona
+from app.models.actor import (
+    Actor,
+    AttributionEdge,
+    Identifier,
+    InfraFinding,
+    RawPersona,
+    ThreatActivity,
+)
 from app.models.external import (
     AbuseReport,
     BreachRecord,
@@ -50,6 +57,7 @@ from app.schemas.dashboard import (
 from app.services.graph.neo4j_client import get_neo4j_client
 from app.services.hibp_lookup import check_email_breaches
 from app.services.scoring import WEIGHTS
+from app.services.threat_categorization import CATEGORY_LABELS
 from app.workers.celery_app import celery_app
 
 router = APIRouter(
@@ -155,6 +163,29 @@ def get_dashboard_timeline(limit: int = 20, db: Session = Depends(get_db)):
                 event_type="lead_submitted",
                 occurred_at=lead.submitted_at,
                 summary=f"Lead observed: {lead.username} on {lead.platform}",
+            )
+        )
+
+    # Real classified activity — see app.services.threat_categorization.
+    # observed_at can be null (source data with no parseable date); those
+    # rows are excluded from a *timestamped* timeline rather than shown with
+    # a fabricated "now".
+    activity_query = (
+        db.query(ThreatActivity)
+        .filter(ThreatActivity.observed_at.isnot(None))
+        .order_by(ThreatActivity.observed_at.desc())
+        .limit(limit)
+    )
+    for activity in activity_query.all():
+        label = CATEGORY_LABELS.get(activity.category, activity.category)
+        events.append(
+            TimelineEventOut(
+                event_type="threat_activity",
+                occurred_at=activity.observed_at,
+                summary=(
+                    f"{label}: {activity.persona_username} on {activity.source_platform}"
+                ),
+                actor_id=str(activity.actor_id) if activity.actor_id else None,
             )
         )
 

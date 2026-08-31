@@ -315,6 +315,127 @@ def test_actor_endpoints_require_auth(client):
     assert test_client.get(f"/api/export/{actor_id}/json").status_code == 401
 
 
+def test_actor_threat_activity_endpoint_returns_classified_activity(client):
+    """GET /api/actors/{id}/threat-activity — the endpoint
+    ActorProfileView's "Observed Threat Categories" section reads from."""
+    test_client, SessionLocal = client
+    headers = _auth_headers(test_client)
+    actor_id = _seed_actor(SessionLocal)
+
+    import uuid as uuid_mod
+
+    from app.models.actor import RawActivity, RawPersona, ThreatActivity
+
+    db = SessionLocal()
+    persona = RawPersona(username="shadow_vendor", platform="mock_marketplace_1")
+    db.add(persona)
+    db.flush()
+    raw_activity = RawActivity(
+        raw_persona_id=persona.id,
+        platform="mock_marketplace_1",
+        source_record_id="mock_marketplace_1:listing:1",
+        title="Fresh dumps",
+        text="Offering stolen credentials, fully checked.",
+    )
+    db.add(raw_activity)
+    db.flush()
+    db.add(
+        ThreatActivity(
+            raw_activity_id=raw_activity.id,
+            actor_id=uuid_mod.UUID(actor_id),
+            persona_username="shadow_vendor",
+            source_platform="mock_marketplace_1",
+            source_record_id=raw_activity.source_record_id,
+            title="Fresh dumps",
+            category="credential_data_theft",
+            classification_reason='Matched phrase "stolen credentials" in activity text',
+            classification_method="keyword_rule",
+            classification_confidence="medium",
+        )
+    )
+    db.commit()
+    db.close()
+
+    response = test_client.get(f"/api/actors/{actor_id}/threat-activity", headers=headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["summary"]) == 1
+    assert body["summary"][0]["category"] == "credential_data_theft"
+    assert body["summary"][0]["category_label"] == "Credential / Data Theft"
+    assert body["summary"][0]["activity_count"] == 1
+    assert body["summary"][0]["sources"] == ["mock_marketplace_1"]
+    assert len(body["activities"]) == 1
+    assert body["activities"][0]["classification_confidence"] == "medium"
+
+
+def test_actor_threat_activity_endpoint_empty_for_actor_with_no_activity(client):
+    """An actor built only from correlation/infra evidence has no activity
+    text at all — an empty summary is the honest result, not an error."""
+    test_client, SessionLocal = client
+    headers = _auth_headers(test_client)
+    actor_id = _seed_actor(SessionLocal)
+
+    response = test_client.get(f"/api/actors/{actor_id}/threat-activity", headers=headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["summary"] == []
+    assert body["activities"] == []
+
+
+def test_json_export_includes_threat_categories(client):
+    test_client, SessionLocal = client
+    headers = _auth_headers(test_client)
+    actor_id = _seed_actor(SessionLocal)
+
+    import uuid as uuid_mod
+
+    from app.models.actor import RawActivity, RawPersona, ThreatActivity
+
+    db = SessionLocal()
+    persona = RawPersona(username="shadow_vendor", platform="mock_marketplace_1")
+    db.add(persona)
+    db.flush()
+    raw_activity = RawActivity(
+        raw_persona_id=persona.id,
+        platform="mock_marketplace_1",
+        source_record_id="mock_marketplace_1:listing:2",
+        text="Selling hacking services, contact for pricing.",
+    )
+    db.add(raw_activity)
+    db.flush()
+    db.add(
+        ThreatActivity(
+            raw_activity_id=raw_activity.id,
+            actor_id=uuid_mod.UUID(actor_id),
+            persona_username="shadow_vendor",
+            source_platform="mock_marketplace_1",
+            source_record_id=raw_activity.source_record_id,
+            category="hacking_services",
+            classification_reason='Matched phrase "selling hacking services" in activity text',
+            classification_method="keyword_rule",
+            classification_confidence="medium",
+        )
+    )
+    db.commit()
+    db.close()
+
+    response = test_client.get(f"/api/export/{actor_id}/json", headers=headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["threat_categories"][0]["category"] == "hacking_services"
+    assert body["threat_categories"][0]["activity_count"] == 1
+    assert len(body["threat_activities"]) == 1
+
+    # Existing export fields must not regress.
+    csv_response = test_client.get(f"/api/export/{actor_id}/csv", headers=headers)
+    assert csv_response.status_code == 200
+    assert b"threat_activity_hacking_services" in csv_response.content
+
+    report_response = test_client.get(f"/api/export/{actor_id}/report", headers=headers)
+    assert report_response.status_code == 200
+    assert len(report_response.content) > 0
+
+
 def test_search_excludes_identifiers_with_no_linked_actor(client):
     test_client, SessionLocal = client
     headers = _auth_headers(test_client)

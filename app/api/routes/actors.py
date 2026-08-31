@@ -11,12 +11,17 @@ from app.schemas.actor import (
     ActorGraphOut,
     ActorProfileOut,
     ActorSearchResult,
+    ActorThreatActivityOut,
     AttributionBreakdownOut,
     AttributionSignal,
     CorrelationEvidenceOut,
+    ThreatActivityOut,
+    ThreatCategorySummary,
 )
 from app.services.attribution_explain import explain_attribution
 from app.services.graph.relationship_mapper import get_actor_graph
+from app.services.threat_activity import get_actor_threat_activities, summarize_by_category
+from app.services.threat_categorization import CATEGORY_LABELS
 
 router = APIRouter(prefix="/api/actors", tags=["actors"], dependencies=[Depends(get_current_user)])
 
@@ -206,6 +211,52 @@ def get_actor_correlation_evidence(actor_id: uuid.UUID, db: Session = Depends(ge
         .order_by(CorrelationEvidence.ingested_at.desc())
         .all()
     )
+
+
+@router.get("/{actor_id}/threat-activity", response_model=ActorThreatActivityOut)
+def get_actor_threat_activity(actor_id: uuid.UUID, db: Session = Depends(get_db)):
+    """"What type of threat activity is this actor associated with?" — a
+    SEPARATE question from attribution-breakdown's "why is this the same
+    actor?" (see app.services.threat_categorization's module docstring).
+    Every row is a real classified ThreatActivity; an empty summary/activity
+    list is the honest, expected result for an actor with no classifiable
+    activity content (e.g. one built only from Tor Onionoo/MISP/HIBP
+    correlation, which carries no narrative activity text at all)."""
+    actor = db.query(Actor).filter(Actor.id == actor_id).first()
+    if actor is None:
+        raise HTTPException(status_code=404, detail="Actor not found")
+
+    rows = get_actor_threat_activities(db, actor_id)
+
+    activities = [
+        ThreatActivityOut(
+            id=row.id,
+            actor_id=row.actor_id,
+            persona_username=row.persona_username,
+            source_platform=row.source_platform,
+            source_record_id=row.source_record_id,
+            title=row.title,
+            observed_at=row.observed_at,
+            category=row.category,
+            category_label=CATEGORY_LABELS.get(row.category, row.category),
+            classification_reason=row.classification_reason,
+            classification_method=row.classification_method,
+            classification_confidence=row.classification_confidence,
+        )
+        for row in rows
+    ]
+
+    summary = [
+        ThreatCategorySummary(
+            category=s.category,
+            category_label=s.category_label,
+            activity_count=s.activity_count,
+            sources=s.sources,
+        )
+        for s in summarize_by_category(rows)
+    ]
+
+    return ActorThreatActivityOut(summary=summary, activities=activities)
 
 
 @router.get("", response_model=list[ActorSearchResult])

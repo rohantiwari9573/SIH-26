@@ -40,7 +40,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.db.session import SessionLocal  # noqa: E402
-from app.models.actor import RawPersona  # noqa: E402
+from app.models.actor import RawActivity, RawPersona  # noqa: E402
 from app.services.pipeline import run_full_analysis  # noqa: E402
 
 csv.field_size_limit(10_000_000)
@@ -111,6 +111,30 @@ def _load_forum_usernames(target_uids: set[str]) -> dict[str, str]:
     return usernames
 
 
+def _upsert_raw_activities(db, raw_persona_id, platform: str, activities: list[dict]) -> int:
+    """Upserts by source_record_id (the exact real listing/post id) rather
+    than blindly inserting, so re-running this script doesn't duplicate rows
+    for the same underlying source item."""
+    count = 0
+    for act in activities:
+        existing = (
+            db.query(RawActivity)
+            .filter(RawActivity.source_record_id == act["source_record_id"])
+            .first()
+        )
+        if existing is None:
+            existing = RawActivity(source_record_id=act["source_record_id"])
+            db.add(existing)
+        existing.raw_persona_id = raw_persona_id
+        existing.platform = platform
+        existing.title = act["title"]
+        existing.text = act["text"]
+        existing.source_category = None
+        existing.observed_at = act.get("observed_at")
+        count += 1
+    return count
+
+
 def main(max_personas: int) -> None:
     if not (DATA_DIR / "vendors.tsv").exists() or not (DATA_DIR / "user.tsv").exists():
         raise SystemExit(
@@ -162,20 +186,38 @@ def main(max_personas: int) -> None:
     vendor_usernames, vendor_pgp = _load_vendor_info(chosen_vids)
     forum_usernames = _load_forum_usernames(chosen_uids)
 
+    # market_activities/forum_activities: real, individual per-listing/per-
+    # post records — the input to threat categorization (see
+    # app.services.threat_categorization). Built alongside, not instead of,
+    # market_text/forum_text (the joined blob StyleProfile/attribution still
+    # needs) — see RawActivity's docstring for why per-item granularity has
+    # to be captured here rather than reconstructed later from sample_text.
     market_text: dict[str, list[str]] = {}
+    market_activities: dict[str, list[dict]] = {}
     market_date: dict[str, datetime] = {}
     for row in listing_rows:
         vid = row["vid"]
         if vid not in chosen_vids:
             continue
+        title = (row.get("title") or "").strip()
         desc = _strip_html(row.get("description", ""))
         if desc:
-            market_text.setdefault(vid, []).append(f"[{row.get('title', '')}] {desc}")
+            market_text.setdefault(vid, []).append(f"[{title}] {desc}")
         scrape_date = scrape_dates.get(row.get("mscrape_id"))
         if scrape_date and (vid not in market_date or scrape_date < market_date[vid]):
             market_date[vid] = scrape_date
+        if title or desc:
+            market_activities.setdefault(vid, []).append(
+                {
+                    "source_record_id": f"evolution_market:listing:{row['lid']}",
+                    "title": title or None,
+                    "text": (desc or title)[:4000],
+                    "observed_at": scrape_date,
+                }
+            )
 
     forum_text: dict[str, list[str]] = {}
+    forum_activities: dict[str, list[dict]] = {}
     forum_date: dict[str, datetime] = {}
     for row in post_rows:
         uid = row["uid"]
@@ -192,10 +234,20 @@ def main(max_personas: int) -> None:
             post_date = None
         if post_date and (uid not in forum_date or post_date < forum_date[uid]):
             forum_date[uid] = post_date
+        if text:
+            forum_activities.setdefault(uid, []).append(
+                {
+                    "source_record_id": f"evolution_forum:post:{row['pid']}",
+                    "title": None,
+                    "text": text[:4000],
+                    "observed_at": post_date,
+                }
+            )
 
     db = SessionLocal()
     try:
         upserted = 0
+        activities_upserted = 0
         for vid, snippets in market_text.items():
             username = vendor_usernames.get(vid)
             if not username:
@@ -212,6 +264,10 @@ def main(max_personas: int) -> None:
             lead.pgp_key = vendor_pgp.get(vid)
             if vid in market_date:
                 lead.submitted_at = market_date[vid]
+            db.flush()
+            activities_upserted += _upsert_raw_activities(
+                db, lead.id, MARKET_PLATFORM, market_activities.get(vid, [])
+            )
             upserted += 1
 
         for uid, snippets in forum_text.items():
@@ -229,11 +285,16 @@ def main(max_personas: int) -> None:
             lead.sample_text = " ".join(snippets)[:20000]
             if uid in forum_date:
                 lead.submitted_at = forum_date[uid]
+            db.flush()
+            activities_upserted += _upsert_raw_activities(
+                db, lead.id, FORUM_PLATFORM, forum_activities.get(uid, [])
+            )
             upserted += 1
 
         db.commit()
         print(f"Evolution dataset: upserted {upserted} persona(s) "
-              f"({len(chosen)} from genuine matched ground-truth pairs)")
+              f"({len(chosen)} from genuine matched ground-truth pairs), "
+              f"{activities_upserted} individual activity record(s)")
     finally:
         db.close()
 

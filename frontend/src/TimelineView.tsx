@@ -6,6 +6,7 @@ const EVENT_LABELS: Record<string, string> = {
   actor_created: "Actor derived",
   infra_finding: "Infrastructure finding",
   lead_submitted: "Lead submitted",
+  threat_activity: "Threat activity",
 };
 
 export default function TimelineView({ onSelectActor }: { onSelectActor: (id: string) => void }) {

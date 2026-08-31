@@ -198,6 +198,37 @@ export async function getActorEvidence(actorId: string): Promise<CorrelationEvid
   return request<CorrelationEvidence[]>(`/api/actors/${actorId}/evidence`);
 }
 
+export interface ThreatActivity {
+  id: string;
+  actor_id: string | null;
+  persona_username: string;
+  source_platform: string;
+  source_record_id: string;
+  title: string | null;
+  observed_at: string | null;
+  category: string;
+  category_label: string;
+  classification_reason: string;
+  classification_method: "source_provided" | "keyword_rule";
+  classification_confidence: "high" | "medium";
+}
+
+export interface ThreatCategorySummary {
+  category: string;
+  category_label: string;
+  activity_count: number;
+  sources: string[];
+}
+
+export interface ActorThreatActivity {
+  summary: ThreatCategorySummary[];
+  activities: ThreatActivity[];
+}
+
+export async function getActorThreatActivity(actorId: string): Promise<ActorThreatActivity> {
+  return request<ActorThreatActivity>(`/api/actors/${actorId}/threat-activity`);
+}
+
 export interface AttributionSignal {
   label: string;
   value: number;

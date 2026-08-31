@@ -20,8 +20,10 @@ from app.models.actor import (
     AttributionEdge,
     Identifier,
     InfraFinding,
+    RawActivity,
     RawPersona,
     StyleProfile,
+    ThreatActivity,
 )
 from app.models.external import CorrelationEvidence
 from app.services.attribution import build_clusters
@@ -33,6 +35,7 @@ from app.services.correlation import (
 from app.services.graph.neo4j_client import get_neo4j_client
 from app.services.graph.relationship_mapper import ingest_marketplace_record
 from app.services.stylometry.features import extract_features
+from app.services.threat_categorization import classify_activity
 
 # Arbitrary fixed key for pg_advisory_xact_lock — see run_full_analysis.
 _ANALYSIS_LOCK_KEY = 727181
@@ -124,12 +127,22 @@ def run_full_analysis(
     # below), so dropping it here is consistent with every other derived
     # table's "rebuilt fresh each run" behavior, not a data-loss risk.
     db.query(CorrelationEvidence).delete()
+    db.query(ThreatActivity).delete()
     db.query(StyleProfile).delete()
     db.query(InfraFinding).delete()
     db.query(AttributionEdge).delete()
     db.query(Identifier).delete()
     db.query(Actor).delete()
     db.flush()
+
+    # (username, platform) -> RawPersona.id, so completed clusters below can
+    # be turned into a raw_persona_id -> actor_id map for ThreatActivity
+    # (RawActivity's provenance FK is to RawPersona, which is never deleted
+    # here — see RawActivity's docstring — but the actor each persona
+    # belongs to is only known once clustering below has actually run).
+    raw_persona_id_by_key = {(p.username, p.platform): p.id for p in raw_personas}
+    raw_personas_by_id = {p.id: p for p in raw_personas}
+    actor_id_by_raw_persona_id: dict = {}
 
     persisted_actors: list[Actor] = []
     for cluster in clusters:
@@ -141,6 +154,10 @@ def run_full_analysis(
         for persona_key in cluster.persona_keys:
             username, _platform = persona_key
             persona = personas_by_key[persona_key]
+
+            raw_persona_id = raw_persona_id_by_key.get(persona_key)
+            if raw_persona_id is not None:
+                actor_id_by_raw_persona_id[raw_persona_id] = actor.id
 
             identifier = Identifier(
                 actor_id=actor.id,
@@ -202,6 +219,39 @@ def run_full_analysis(
             )
 
         persisted_actors.append(actor)
+
+    # Threat-activity classification — a SEPARATE analytical pipeline from
+    # attribution above (see app.services.threat_categorization's module
+    # docstring): reads RawActivity (real, individually-ingested listing/
+    # post records, never deleted by this function), classifies each one
+    # deterministically, and links only genuinely-classified results to the
+    # actor that persona was just clustered into. Never touches
+    # confidence_score/WEIGHTS. Unclassified activities are simply not
+    # persisted — see ThreatActivity's docstring.
+    for raw_activity in db.query(RawActivity).all():
+        result = classify_activity(
+            title=raw_activity.title,
+            text=raw_activity.text,
+            source_category=raw_activity.source_category,
+        )
+        if result is None:
+            continue
+        raw_persona = raw_personas_by_id.get(raw_activity.raw_persona_id)
+        db.add(
+            ThreatActivity(
+                raw_activity_id=raw_activity.id,
+                actor_id=actor_id_by_raw_persona_id.get(raw_activity.raw_persona_id),
+                persona_username=raw_persona.username if raw_persona else "",
+                source_platform=raw_activity.platform,
+                source_record_id=raw_activity.source_record_id,
+                title=raw_activity.title,
+                observed_at=raw_activity.observed_at,
+                category=result.category,
+                classification_reason=result.reason,
+                classification_method=result.method,
+                classification_confidence=result.confidence,
+            )
+        )
 
     # Deterministic correlation against the four "live/feed" sources (Tor
     # Onionoo, both MISP feeds, HIBP) — see app.services.correlation. Runs

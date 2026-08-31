@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   ActorProfile,
+  ActorThreatActivity,
   ApiError,
   AttributionBreakdown,
   CorrelationEvidence,
@@ -8,6 +9,7 @@ import {
   getActorAttributionBreakdown,
   getActorEvidence,
   getActorProfile,
+  getActorThreatActivity,
 } from "./api";
 import Badge from "./Badge";
 import ConfidenceBadge from "./ConfidenceBadge";
@@ -17,6 +19,7 @@ import {
   AlertIcon,
   ArrowLeftIcon,
   DownloadIcon,
+  FlagIcon,
   KeyIcon,
   LinkIcon,
   LoaderIcon,
@@ -80,6 +83,8 @@ export default function ActorProfileView({
   const [profile, setProfile] = useState<ActorProfile | null>(null);
   const [evidence, setEvidence] = useState<CorrelationEvidence[] | null>(null);
   const [breakdown, setBreakdown] = useState<AttributionBreakdown | null>(null);
+  const [threatActivity, setThreatActivity] = useState<ActorThreatActivity | null>(null);
+  const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
@@ -90,6 +95,8 @@ export default function ActorProfileView({
     setProfile(null);
     setEvidence(null);
     setBreakdown(null);
+    setThreatActivity(null);
+    setExpandedCategory(null);
     getActorProfile(actorId)
       .then(setProfile)
       .catch((err) =>
@@ -103,6 +110,9 @@ export default function ActorProfileView({
     getActorAttributionBreakdown(actorId)
       .then(setBreakdown)
       .catch(() => setBreakdown(null));
+    getActorThreatActivity(actorId)
+      .then(setThreatActivity)
+      .catch(() => setThreatActivity({ summary: [], activities: [] }));
   }, [actorId, retryToken]);
 
   async function handleExport(format: "csv" | "json" | "report") {
@@ -358,6 +368,96 @@ export default function ActorProfileView({
                 ))}
               </tbody>
             </table>
+          )}
+        </div>
+      </section>
+
+      <section>
+        <div className="section-card">
+          <div className="section-heading">
+            <FlagIcon width={16} height={16} />
+            <h3>Observed Threat Categories</h3>
+            <span className="section-count">{threatActivity?.summary.length ?? 0}</span>
+          </div>
+          <p className="muted" style={{ marginBottom: "0.75rem" }}>
+            Threat categories derived from this actor's own real activity content (marketplace
+            listings, forum posts) — a separate analysis from the attribution evidence above.
+            This does not affect attribution confidence, and does not assert the actor
+            definitively committed a crime; it reflects what Argus's classifier found in the
+            actor's observed activity text and why.
+          </p>
+          {threatActivity === null ? (
+            <SkeletonBlock height={80} />
+          ) : threatActivity.summary.length === 0 ? (
+            <div>
+              <p style={{ marginBottom: "0.35rem" }}>
+                <strong>No classifiable activity found.</strong>
+              </p>
+              <p className="muted">
+                None of this actor's known personas have activity text (marketplace listing or
+                forum post content) that matched a controlled threat category. This is the
+                expected result for actors built only from infrastructure/correlation evidence,
+                or whose activity text was too generic/ambiguous to classify conservatively.
+              </p>
+            </div>
+          ) : (
+            <div>
+              {threatActivity.summary.map((cat) => {
+                const isOpen = expandedCategory === cat.category;
+                const items = threatActivity.activities.filter((a) => a.category === cat.category);
+                return (
+                  <div key={cat.category} className="threat-category-block">
+                    <button
+                      className="threat-category-row"
+                      onClick={() => setExpandedCategory(isOpen ? null : cat.category)}
+                      aria-expanded={isOpen}
+                    >
+                      <span className="threat-category-label">{cat.category_label}</span>
+                      <span className="muted" style={{ fontSize: "0.85rem" }}>
+                        {cat.activity_count} activit{cat.activity_count === 1 ? "y" : "ies"} ·{" "}
+                        {cat.sources.length} source{cat.sources.length === 1 ? "" : "s"}
+                      </span>
+                    </button>
+                    {isOpen && (
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Source</th>
+                            <th>Persona</th>
+                            <th>Activity</th>
+                            <th>Why classified</th>
+                            <th>Observed</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {items.map((item) => (
+                            <tr key={item.id}>
+                              <td>
+                                {item.source_platform}{" "}
+                                <Badge variant={platformBadgeVariant(item.source_platform)} />
+                              </td>
+                              <td className="mono">{item.persona_username}</td>
+                              <td>{item.title ?? item.source_record_id}</td>
+                              <td className="muted">
+                                {item.classification_reason}
+                                <span className="muted" style={{ display: "block", fontSize: "0.78rem" }}>
+                                  {item.classification_confidence === "high"
+                                    ? "High confidence — source-provided category"
+                                    : "Medium confidence — keyword rule match"}
+                                </span>
+                              </td>
+                              <td>
+                                {item.observed_at ? new Date(item.observed_at).toLocaleDateString() : "—"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
       </section>

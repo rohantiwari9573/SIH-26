@@ -1363,3 +1363,38 @@ select:focus-visible {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--border-hover);
 }
+
+.threat-category-block {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  margin-bottom: 0.6rem;
+  overflow: hidden;
+}
+
+.threat-category-row {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--surface-2);
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+.threat-category-row:hover {
+  background: var(--surface-3);
+}
+
+.threat-category-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.threat-category-block table {
+  margin: 0;
+}
