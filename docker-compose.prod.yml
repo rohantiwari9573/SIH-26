@@ -1,0 +1,72 @@
+# Production deployment compose file — used on the dedicated EC2 instance,
+# not local dev (see docker-compose.yml for that). Differs deliberately:
+#   - Postgres/Neo4j/Redis ports are NOT published to the host (internal
+#     compose network only) — the same fix already applied to the other two
+#     projects sharing AWS, see project memory for shared-projects-backend.
+#   - api/worker build the image and run from it (no bind-mounted source),
+#     no --reload.
+#   - No frontend/frontend-prod/mock_target services — the frontend is
+#     deployed separately on Vercel, and mock_target is a local-only infra-
+#     scan test target per docs/ETHICS.md, not meant to be internet-facing.
+services:
+  postgres:
+    image: postgres:16
+    env_file: .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  neo4j:
+    image: neo4j:5
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD}
+      # Argus's dataset is small (hundreds of nodes, not millions) — capping
+      # heap/pagecache keeps Neo4j from grabbing its default share of RAM on
+      # a modest instance, leaving room for Postgres/Redis/API/Celery.
+      NEO4J_server_memory_heap_initial__size: 256m
+      NEO4J_server_memory_heap_max__size: 512m
+      NEO4J_server_memory_pagecache_size: 256m
+    volumes:
+      - neo4j_data:/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+
+  api:
+    build: .
+    env_file: .env
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_started
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  worker:
+    build: .
+    env_file: .env
+    command: celery -A app.workers.celery_app worker --loglevel=info
+    depends_on:
+      - api
+      - redis
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  neo4j_data:
