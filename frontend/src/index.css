@@ -1153,35 +1153,29 @@ select:focus-visible {
   inset: 0;
   width: 100%;
   height: 100%;
-  opacity: 0.55;
+  opacity: 0.42;
 }
 
 .auth-graph-edge {
   stroke: var(--accent);
   stroke-width: 1;
-  opacity: 0.16;
+  opacity: 0.14;
 }
 
 .auth-graph-node {
   fill: var(--accent);
-  opacity: 0.4;
+  opacity: 0.38;
 }
 
 .auth-graph-node-glow {
   fill: var(--accent-hover);
-  opacity: 0.75;
+  opacity: 0.7;
   filter: drop-shadow(0 0 7px var(--accent));
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .auth-graph-node-glow {
     animation: auth-node-pulse 5s ease-in-out infinite;
-  }
-  .auth-graph-node-glow:nth-of-type(2) {
-    animation-delay: 1.6s;
-  }
-  .auth-graph-node-glow:nth-of-type(3) {
-    animation-delay: 3.1s;
   }
 }
 

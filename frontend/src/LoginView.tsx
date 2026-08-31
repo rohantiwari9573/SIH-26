@@ -28,28 +28,41 @@ const CAPABILITIES = [
 /** Purely decorative — an abstract echo of the real relationship graph
  * (GraphView.tsx), never real data. No labels, no identifiers, no
  * fabricated statistics; see the login redesign brief's explicit
- * instruction not to expose or imply intelligence before authentication. */
+ * instruction not to expose or imply intelligence before authentication.
+ *
+ * The layout isn't random noise: it loosely reads as a left-to-right(ish)
+ * investigative pipeline — a small "sources" cluster feeding into
+ * "identifiers", funneling through a "relationships" hub, converging on
+ * an "attribution" node positioned down toward the capability-card area
+ * — without ever labeling a single node, so it stays honestly abstract. */
 function AuthGraphBackground() {
-  const nodes: { x: number; y: number; r: number; glow?: boolean }[] = [
-    { x: 120, y: 140, r: 4 },
-    { x: 260, y: 90, r: 3 },
-    { x: 340, y: 220, r: 5, glow: true },
-    { x: 200, y: 300, r: 3 },
-    { x: 460, y: 160, r: 4 },
-    { x: 520, y: 320, r: 3 },
-    { x: 380, y: 400, r: 5, glow: true },
-    { x: 140, y: 420, r: 3 },
-    { x: 560, y: 460, r: 4 },
-    { x: 280, y: 500, r: 3 },
-    { x: 440, y: 560, r: 5, glow: true },
-    { x: 620, y: 240, r: 3 },
-    { x: 90, y: 560, r: 3 },
-    { x: 500, y: 620, r: 3 },
+  const nodes: { x: number; y: number; r: number; glow?: boolean; delay?: number }[] = [
+    // sources — small cluster, upper right, away from the headline text
+    { x: 560, y: 58, r: 3 },
+    { x: 630, y: 128, r: 4, glow: true, delay: 0 },
+    { x: 498, y: 30, r: 2.5 },
+    // identifiers — funnels down-left from the source cluster
+    { x: 520, y: 198, r: 3.5 },
+    { x: 612, y: 248, r: 3 },
+    { x: 448, y: 138, r: 3 },
+    // relationships — the busiest hub, largest anchor
+    { x: 418, y: 298, r: 6, glow: true, delay: 1.7 },
+    { x: 560, y: 356, r: 3 },
+    { x: 330, y: 236, r: 3 },
+    // attribution — final convergence, near the capability cards below
+    { x: 296, y: 458, r: 5.5, glow: true, delay: 3.2 },
+    { x: 408, y: 536, r: 3.5 },
+    { x: 188, y: 536, r: 3 },
+    { x: 140, y: 606, r: 2.5 },
   ];
   const edges: [number, number][] = [
-    [0, 1], [1, 2], [2, 3], [0, 3], [2, 4], [4, 5], [2, 6], [6, 7],
-    [3, 7], [5, 8], [6, 9], [8, 10], [6, 10], [4, 11], [7, 12], [10, 13],
-    [9, 12],
+    [0, 1], [1, 2], [0, 2],
+    [2, 5], [1, 4], [0, 3],
+    [3, 5],
+    [5, 8], [3, 6], [4, 7],
+    [6, 8], [6, 7],
+    [6, 9], [7, 10], [8, 11],
+    [9, 10], [9, 11], [11, 12],
   ];
 
   return (
@@ -77,6 +90,7 @@ function AuthGraphBackground() {
           cy={n.y}
           r={n.r}
           className={n.glow ? "auth-graph-node auth-graph-node-glow" : "auth-graph-node"}
+          style={n.glow ? { animationDelay: `${n.delay}s` } : undefined}
         />
       ))}
     </svg>
