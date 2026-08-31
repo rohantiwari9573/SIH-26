@@ -98,6 +98,11 @@ export default function DashboardView({ onSelectActor }: { onSelectActor: (id: s
 
   return (
     <div className="dashboard">
+      <div style={{ marginBottom: "1.5rem" }}>
+        <h2>Overview</h2>
+        <p className="muted">Argus's live intelligence summary across all connected sources.</p>
+      </div>
+
       <div className="stat-grid">
         {stats ? (
           <>

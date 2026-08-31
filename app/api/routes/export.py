@@ -21,7 +21,12 @@ router = APIRouter(prefix="/api/export", tags=["export"], dependencies=[Depends(
 # Platforms that only ever hold Argus's own synthetic/controlled data — an
 # exported report for an actor built entirely from these must say SYNTHETIC
 # up front rather than let a reader mistake it for a real attribution.
-SYNTHETIC_PLATFORMS = {"argus_controlled_demo", "mock_marketplace_1", "mock_marketplace_2"}
+SYNTHETIC_PLATFORMS = {
+    "argus_controlled_demo",
+    "mock_marketplace_1",
+    "mock_marketplace_2",
+    "mock_marketplace_3",
+}
 
 
 _FORMULA_TRIGGER_CHARS = ("=", "+", "-", "@", "\t", "\r")

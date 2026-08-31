@@ -42,6 +42,11 @@ export default function SearchView({
 
   return (
     <div>
+      <div style={{ marginBottom: "1.25rem" }}>
+        <h2>Threat Actors</h2>
+        <p className="muted">Search resolved actors by handle, wallet, or PGP key.</p>
+      </div>
+
       <form className="search-bar" onSubmit={handleSearch}>
         <div className="search-input-wrap">
           <SearchIcon width={16} height={16} />

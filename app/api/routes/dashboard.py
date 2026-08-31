@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_current_user
 from app.core.config import settings
@@ -222,26 +222,24 @@ def get_infra_findings(limit: int = 20, db: Session = Depends(get_db)):
     table the per-actor profile page reads from."""
     rows = (
         db.query(InfraFinding)
+        .options(joinedload(InfraFinding.actor))
         .order_by(InfraFinding.discovered_at.desc())
         .limit(limit)
         .all()
     )
-    out = []
-    for row in rows:
-        actor = db.query(Actor).filter(Actor.id == row.actor_id).first() if row.actor_id else None
-        out.append(
-            InfraFindingRowOut(
-                id=str(row.id),
-                onion_address=row.onion_address,
-                finding_type=row.finding_type,
-                detail=row.detail,
-                resolved_ip=row.resolved_ip,
-                discovered_at=row.discovered_at,
-                actor_id=str(row.actor_id) if row.actor_id else None,
-                actor_label=actor.label if actor else None,
-            )
+    return [
+        InfraFindingRowOut(
+            id=str(row.id),
+            onion_address=row.onion_address,
+            finding_type=row.finding_type,
+            detail=row.detail,
+            resolved_ip=row.resolved_ip,
+            discovered_at=row.discovered_at,
+            actor_id=str(row.actor_id) if row.actor_id else None,
+            actor_label=row.actor.label if row.actor else None,
         )
-    return out
+        for row in rows
+    ]
 
 
 @router.get("/tor-relays", response_model=list[TorRelayOut])

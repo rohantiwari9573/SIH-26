@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.api.deps import get_current_user
 from app.db.session import get_db
@@ -82,6 +82,7 @@ def search_actors(q: str, db: Session = Depends(get_db)):
     """Query interface: search by any known identifier value (username, wallet, PGP key)."""
     matches = (
         db.query(Identifier)
+        .options(joinedload(Identifier.actor))
         .filter(Identifier.value.ilike(f"%{q}%"))
         .filter(Identifier.actor_id.isnot(None))
         .limit(50)
