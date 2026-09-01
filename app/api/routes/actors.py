@@ -8,6 +8,7 @@ from app.db.session import get_db
 from app.models.actor import Actor, Identifier
 from app.models.external import CorrelationEvidence
 from app.schemas.actor import (
+    ActorEnrichmentOut,
     ActorGraphOut,
     ActorProfileOut,
     ActorSearchResult,
@@ -16,9 +17,11 @@ from app.schemas.actor import (
     AttributionSignal,
     CorrelationEvidenceOut,
     PaginatedActorsOut,
+    PlatformBreakdownOut,
     ThreatActivityOut,
     ThreatCategorySummary,
 )
+from app.services.actor_enrichment import compute_actor_enrichment
 from app.services.attribution_explain import explain_attribution
 from app.services.graph.relationship_mapper import get_actor_graph
 from app.services.threat_activity import get_actor_threat_activities, summarize_by_category
@@ -126,6 +129,37 @@ def get_actor_profile(actor_id: uuid.UUID, db: Session = Depends(get_db)):
     if actor is None:
         raise HTTPException(status_code=404, detail="Actor not found")
     return actor
+
+
+@router.get("/{actor_id}/enrichment", response_model=ActorEnrichmentOut)
+def get_actor_enrichment(actor_id: uuid.UUID, db: Session = Depends(get_db)):
+    """Derived activity/behavioral/cross-platform statistics for this actor,
+    aggregated purely from RawActivity/Identifier/ThreatActivity rows already
+    tied to it — see app.services.actor_enrichment. Adds no new data source
+    and never touches confidence_score."""
+    actor = (
+        db.query(Actor)
+        .options(selectinload(Actor.identifiers))
+        .filter(Actor.id == actor_id)
+        .first()
+    )
+    if actor is None:
+        raise HTTPException(status_code=404, detail="Actor not found")
+
+    enrichment = compute_actor_enrichment(db, actor)
+    return ActorEnrichmentOut(
+        platforms=[PlatformBreakdownOut(**vars(p)) for p in enrichment.platforms],
+        total_activities=enrichment.total_activities,
+        classified_activities=enrichment.classified_activities,
+        first_observed=enrichment.first_observed,
+        last_observed=enrichment.last_observed,
+        active_duration_days=enrichment.active_duration_days,
+        days_since_last_observed=enrichment.days_since_last_observed,
+        posting_frequency_per_week=enrichment.posting_frequency_per_week,
+        shared_wallet_across_platforms=enrichment.shared_wallet_across_platforms,
+        shared_pgp_key_across_platforms=enrichment.shared_pgp_key_across_platforms,
+        platform_migration_order=enrichment.platform_migration_order,
+    )
 
 
 @router.get("/{actor_id}/graph", response_model=ActorGraphOut)

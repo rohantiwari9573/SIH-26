@@ -176,6 +176,39 @@ class ActorThreatActivityOut(BaseModel):
     page_size: int
 
 
+class PlatformBreakdownOut(BaseModel):
+    """One platform this actor was observed on, with real counts/timestamps
+    from that platform's identifiers and RawActivity rows — see
+    app.services.actor_enrichment."""
+
+    platform: str
+    identifier_count: int
+    activity_count: int
+    first_activity: datetime | None
+    last_activity: datetime | None
+
+
+class ActorEnrichmentOut(BaseModel):
+    """Derived purely by aggregating this actor's existing RawActivity/
+    Identifier/ThreatActivity rows — see app.services.actor_enrichment.
+    Never fabricated, never fed into confidence_score. A None/0/empty value
+    means the underlying evidence genuinely doesn't support that field
+    (e.g. no RawActivity has an observed_at timestamp), not that Argus
+    failed to look."""
+
+    platforms: list[PlatformBreakdownOut]
+    total_activities: int
+    classified_activities: int
+    first_observed: datetime | None
+    last_observed: datetime | None
+    active_duration_days: int | None
+    days_since_last_observed: int | None
+    posting_frequency_per_week: float | None
+    shared_wallet_across_platforms: bool
+    shared_pgp_key_across_platforms: bool
+    platform_migration_order: list[str]
+
+
 class CorrelationEvidenceOut(BaseModel):
     """One deterministic match between a live/feed source and this actor's
     known infrastructure — see app.services.correlation. Enrichment, not an

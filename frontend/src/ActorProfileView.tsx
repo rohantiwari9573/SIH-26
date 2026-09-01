@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  ActorEnrichment,
   ActorProfile,
   ActorThreatActivity,
   ApiError,
@@ -7,6 +8,7 @@ import {
   CorrelationEvidence,
   downloadExport,
   getActorAttributionBreakdown,
+  getActorEnrichment,
   getActorEvidence,
   getActorProfile,
   getActorThreatActivity,
@@ -16,10 +18,13 @@ import ConfidenceBadge from "./ConfidenceBadge";
 import GraphView from "./GraphView";
 import { SkeletonBlock } from "./Skeleton";
 import {
+  ActivityIcon,
   AlertIcon,
   ArrowLeftIcon,
+  ClockIcon,
   DownloadIcon,
   FlagIcon,
+  GlobeIcon,
   KeyIcon,
   LinkIcon,
   LoaderIcon,
@@ -84,6 +89,7 @@ export default function ActorProfileView({
   const [evidence, setEvidence] = useState<CorrelationEvidence[] | null>(null);
   const [breakdown, setBreakdown] = useState<AttributionBreakdown | null>(null);
   const [threatActivity, setThreatActivity] = useState<ActorThreatActivity | null>(null);
+  const [enrichment, setEnrichment] = useState<ActorEnrichment | null>(null);
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [categoryPages, setCategoryPages] = useState<
     Record<string, { activities: ActorThreatActivity["activities"]; total: number; page: number; loading: boolean }>
@@ -99,6 +105,7 @@ export default function ActorProfileView({
     setEvidence(null);
     setBreakdown(null);
     setThreatActivity(null);
+    setEnrichment(null);
     setExpandedCategory(null);
     setCategoryPages({});
     getActorProfile(actorId)
@@ -118,6 +125,23 @@ export default function ActorProfileView({
       .then(setThreatActivity)
       .catch(() =>
         setThreatActivity({ summary: [], activities: [], activities_total: 0, page: 1, page_size: 50 })
+      );
+    getActorEnrichment(actorId)
+      .then(setEnrichment)
+      .catch(() =>
+        setEnrichment({
+          platforms: [],
+          total_activities: 0,
+          classified_activities: 0,
+          first_observed: null,
+          last_observed: null,
+          active_duration_days: null,
+          days_since_last_observed: null,
+          posting_frequency_per_week: null,
+          shared_wallet_across_platforms: false,
+          shared_pgp_key_across_platforms: false,
+          platform_migration_order: [],
+        })
       );
   }, [actorId, retryToken]);
 
@@ -231,6 +255,35 @@ export default function ActorProfileView({
         </div>
       </div>
 
+      <div className="stat-strip">
+        <span className="stat-chip">
+          <strong>{enrichment ? enrichment.platforms.length : "…"}</strong>&nbsp;platform
+          {enrichment?.platforms.length === 1 ? "" : "s"} observed
+        </span>
+        <span className="stat-chip">
+          <strong>{enrichment ? enrichment.total_activities : "…"}</strong>&nbsp;activit
+          {enrichment?.total_activities === 1 ? "y" : "ies"}
+        </span>
+        <span className="stat-chip">
+          <strong>{profile.identifiers.length}</strong>&nbsp;identifier
+          {profile.identifiers.length === 1 ? "" : "s"}
+        </span>
+        <span className="stat-chip">
+          <strong>{threatActivity ? threatActivity.summary.length : "…"}</strong>&nbsp;threat
+          category{threatActivity?.summary.length === 1 ? "" : "ies"}
+        </span>
+        {enrichment?.first_observed && (
+          <span className="stat-chip">
+            First observed <strong>{new Date(enrichment.first_observed).toLocaleDateString()}</strong>
+          </span>
+        )}
+        {enrichment?.last_observed && (
+          <span className="stat-chip">
+            Last observed <strong>{new Date(enrichment.last_observed).toLocaleDateString()}</strong>
+          </span>
+        )}
+      </div>
+
       <section>
         <div className="section-card">
           <div className="section-heading">
@@ -333,6 +386,117 @@ export default function ActorProfileView({
                 ))}
               </tbody>
             </table>
+          )}
+        </div>
+      </section>
+
+      <section>
+        <div className="section-card">
+          <div className="section-heading">
+            <ActivityIcon width={16} height={16} />
+            <h3>Activity Overview</h3>
+          </div>
+          <p className="muted" style={{ marginBottom: "0.75rem" }}>
+            Derived by aggregating this actor's real ingested activity records (marketplace
+            listings, forum posts) — the same records behind the identifiers and threat
+            categories above, counted here instead of individually listed.
+          </p>
+          {enrichment === null ? (
+            <SkeletonBlock height={80} />
+          ) : enrichment.total_activities === 0 ? (
+            <p className="muted">
+              No evidence observed in currently ingested sources — this actor's known personas
+              have no linked activity records.
+            </p>
+          ) : (
+            <div className="signal-list">
+              <div className="signal-row">
+                <span className="signal-label">Total activities</span>
+                <span className="signal-value">{enrichment.total_activities}</span>
+              </div>
+              <div className="signal-row">
+                <span className="signal-label">Classified into a threat category</span>
+                <span className="signal-value">{enrichment.classified_activities}</span>
+              </div>
+              {enrichment.active_duration_days !== null && (
+                <div className="signal-row">
+                  <span className="signal-label">Active span</span>
+                  <span className="signal-value">{enrichment.active_duration_days} days</span>
+                </div>
+              )}
+              {enrichment.posting_frequency_per_week !== null && (
+                <div className="signal-row">
+                  <span className="signal-label">Posting frequency</span>
+                  <span className="signal-value">
+                    {enrichment.posting_frequency_per_week}/week
+                  </span>
+                </div>
+              )}
+              {enrichment.days_since_last_observed !== null && (
+                <div className="signal-row">
+                  <span className="signal-label">Days since last observed</span>
+                  <span className="signal-value">{enrichment.days_since_last_observed}</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section>
+        <div className="section-card">
+          <div className="section-heading">
+            <GlobeIcon width={16} height={16} />
+            <h3>Cross-Platform Presence</h3>
+            <span className="section-count">{enrichment?.platforms.length ?? 0}</span>
+          </div>
+          {enrichment === null ? (
+            <SkeletonBlock height={80} />
+          ) : enrichment.platforms.length === 0 ? (
+            <p className="muted">No evidence observed in currently ingested sources.</p>
+          ) : (
+            <>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Platform</th>
+                    <th>Identifiers</th>
+                    <th>Activities</th>
+                    <th>First activity</th>
+                    <th>Last activity</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {enrichment.platforms.map((p) => (
+                    <tr key={p.platform}>
+                      <td>
+                        {p.platform} <Badge variant={platformBadgeVariant(p.platform)} />
+                      </td>
+                      <td>{p.identifier_count}</td>
+                      <td>{p.activity_count}</td>
+                      <td>{p.first_activity ? new Date(p.first_activity).toLocaleDateString() : "—"}</td>
+                      <td>{p.last_activity ? new Date(p.last_activity).toLocaleDateString() : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div style={{ display: "flex", gap: "1.5rem", marginTop: "0.75rem", fontSize: "0.85rem" }}>
+                <span className="muted">
+                  Shared wallet across platforms:{" "}
+                  <strong>{enrichment.shared_wallet_across_platforms ? "Yes" : "No"}</strong>
+                </span>
+                <span className="muted">
+                  Shared PGP key across platforms:{" "}
+                  <strong>{enrichment.shared_pgp_key_across_platforms ? "Yes" : "No"}</strong>
+                </span>
+              </div>
+              {enrichment.platform_migration_order.length > 1 && (
+                <p className="muted" style={{ marginTop: "0.5rem", fontSize: "0.85rem" }}>
+                  <ClockIcon width={13} height={13} /> Observed activity order (earliest first):{" "}
+                  {enrichment.platform_migration_order.join(" → ")}
+                </p>
+              )}
+            </>
           )}
         </div>
       </section>

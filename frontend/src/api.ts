@@ -153,6 +153,32 @@ export async function getActorProfile(actorId: string): Promise<ActorProfile> {
   return request<ActorProfile>(`/api/actors/${actorId}`);
 }
 
+export interface PlatformBreakdownOut {
+  platform: string;
+  identifier_count: number;
+  activity_count: number;
+  first_activity: string | null;
+  last_activity: string | null;
+}
+
+export interface ActorEnrichment {
+  platforms: PlatformBreakdownOut[];
+  total_activities: number;
+  classified_activities: number;
+  first_observed: string | null;
+  last_observed: string | null;
+  active_duration_days: number | null;
+  days_since_last_observed: number | null;
+  posting_frequency_per_week: number | null;
+  shared_wallet_across_platforms: boolean;
+  shared_pgp_key_across_platforms: boolean;
+  platform_migration_order: string[];
+}
+
+export async function getActorEnrichment(actorId: string): Promise<ActorEnrichment> {
+  return request<ActorEnrichment>(`/api/actors/${actorId}/enrichment`);
+}
+
 export interface GraphNode {
   type: string;
   value: string;
