@@ -69,6 +69,7 @@ html,
 body {
   margin: 0;
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 body {
@@ -1344,6 +1345,62 @@ select:focus-visible {
   .auth-panel {
     flex-basis: 100%;
     padding: 2rem 1.25rem;
+  }
+
+  /* App shell: the 248px fixed sidebar + main's side padding leaves too
+     little width for main's content (e.g. the Dashboard stat-grid) below
+     this breakpoint, forcing horizontal overflow that clips the last
+     tile(s). Stacking the sidebar above main removes that squeeze without
+     touching any Dashboard markup or visual styling. */
+  .app-body {
+    flex-direction: column;
+  }
+  .sidebar {
+    width: 100%;
+    max-height: none;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    overflow-y: visible;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.6rem 0.85rem;
+  }
+  .sidebar-section {
+    margin-bottom: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex-shrink: 0;
+  }
+  .sidebar-section-title {
+    display: none;
+  }
+  .sidebar-item {
+    width: auto;
+    white-space: nowrap;
+    margin-bottom: 0;
+  }
+  .app-body main {
+    padding: 1.5rem 1.25rem 3rem;
+  }
+}
+
+@media (max-width: 520px) {
+  /* Below phone width even a 180px tile minimum forces horizontal
+     overflow with 6 stat tiles; narrowing the minimum keeps every tile
+     fully on-screen at 2-per-row instead of clipping the last one(s). */
+  .stat-grid {
+    grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+    gap: 0.6rem;
+  }
+  .stat-tile {
+    padding: 0.85rem 0.9rem;
+  }
+  .stat-tile-value {
+    font-size: 1.5rem;
   }
 }
 
