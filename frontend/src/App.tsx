@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { isLoggedIn, logout } from "./api";
 import LoginView from "./LoginView";
 import SearchView from "./SearchView";
@@ -45,6 +45,35 @@ export type View =
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(isLoggedIn());
   const [view, setView] = useState<View>({ name: "dashboard" });
+  // The app has no URL routing (view lives only in React state), so the
+  // browser's own history stack never gets an entry per screen. Without
+  // this, pressing the physical/gesture Back button has nothing of ours to
+  // undo and falls through to whatever page was open *before* Argus was
+  // ever loaded — which reads as the app randomly disappearing/"logging
+  // out". Treating Dashboard as the root history entry and pushing one
+  // entry per navigation makes Back/Forward move within the app instead.
+  const isPoppingRef = useRef(false);
+
+  useEffect(() => {
+    window.history.replaceState({ view: { name: "dashboard" } as View }, "");
+    function onPopState(event: PopStateEvent) {
+      isPoppingRef.current = true;
+      setView((event.state?.view as View | undefined) ?? { name: "dashboard" });
+      isPoppingRef.current = false;
+    }
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  function navigate(next: View) {
+    setView(next);
+    // A popstate-triggered update is the browser already moving through
+    // its own history — pushing another entry here would double up and
+    // break Back (it would just re-arrive at the same screen).
+    if (!isPoppingRef.current) {
+      window.history.pushState({ view: next }, "");
+    }
+  }
 
   if (!loggedIn) {
     return <LoginView onLoggedIn={() => setLoggedIn(true)} />;
@@ -54,14 +83,15 @@ export default function App() {
     logout();
     setLoggedIn(false);
     setView({ name: "dashboard" });
+    window.history.replaceState({ view: { name: "dashboard" } as View }, "");
   }
 
   function selectActor(actorId: string) {
-    setView({ name: "profile", actorId });
+    navigate({ name: "profile", actorId });
   }
 
   function handleNav(name: View["name"]) {
-    setView({ name } as View);
+    navigate({ name } as View);
   }
 
   return (
@@ -78,7 +108,7 @@ export default function App() {
         </div>
         <div className="actions">
           {view.name !== "submit" && (
-            <button className="btn-secondary" onClick={() => setView({ name: "submit" })}>
+            <button className="btn-secondary" onClick={() => navigate({ name: "submit" })}>
               <PlusIcon width={16} height={16} />
               Submit lead
             </button>
@@ -96,9 +126,9 @@ export default function App() {
           {view.name === "dashboard" && <DashboardView onSelectActor={selectActor} />}
           {view.name === "search" && <SearchView onSelectActor={selectActor} />}
           {view.name === "profile" && (
-            <ActorProfileView actorId={view.actorId} onBack={() => setView({ name: "search" })} />
+            <ActorProfileView actorId={view.actorId} onBack={() => navigate({ name: "search" })} />
           )}
-          {view.name === "submit" && <SubmitLeadView onDone={() => setView({ name: "search" })} />}
+          {view.name === "submit" && <SubmitLeadView onDone={() => navigate({ name: "search" })} />}
           {view.name === "infrastructure" && <InfrastructureView />}
           {view.name === "attribution" && <AttributionView onSelectActor={selectActor} />}
           {view.name === "timeline" && <TimelineView onSelectActor={selectActor} />}
