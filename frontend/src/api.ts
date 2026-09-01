@@ -179,6 +179,48 @@ export async function getActorEnrichment(actorId: string): Promise<ActorEnrichme
   return request<ActorEnrichment>(`/api/actors/${actorId}/enrichment`);
 }
 
+export interface AIPersonaSummary {
+  username: string;
+  platform: string;
+  sample_count: number;
+  combined_word_count: number;
+}
+
+export interface AISignal {
+  name: string;
+  score: number;
+  bucket: string;
+}
+
+export interface AIEvidenceSample {
+  persona_username: string;
+  platform: string;
+  source_record_id: string;
+  title: string | null;
+  observed_at: string | null;
+}
+
+export interface AIPairAnalysis {
+  persona_a: AIPersonaSummary;
+  persona_b: AIPersonaSummary;
+  stylometric_similarity: number | null;
+  behavioral_similarity: number | null;
+  signals: AISignal[];
+  evidence_samples: AIEvidenceSample[];
+  insufficient_data_reason: string | null;
+}
+
+export interface ActorAIAnalysis {
+  personas: AIPersonaSummary[];
+  pairs: AIPairAnalysis[];
+  status_message: string | null;
+  method: string;
+}
+
+export async function getActorAIAnalysis(actorId: string): Promise<ActorAIAnalysis> {
+  return request<ActorAIAnalysis>(`/api/actors/${actorId}/ai-analysis`);
+}
+
 export interface GraphNode {
   type: string;
   value: string;

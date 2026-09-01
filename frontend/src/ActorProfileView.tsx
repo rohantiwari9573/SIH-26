@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  ActorAIAnalysis,
   ActorEnrichment,
   ActorProfile,
   ActorThreatActivity,
@@ -7,6 +8,7 @@ import {
   AttributionBreakdown,
   CorrelationEvidence,
   downloadExport,
+  getActorAIAnalysis,
   getActorAttributionBreakdown,
   getActorEnrichment,
   getActorEvidence,
@@ -90,6 +92,7 @@ export default function ActorProfileView({
   const [breakdown, setBreakdown] = useState<AttributionBreakdown | null>(null);
   const [threatActivity, setThreatActivity] = useState<ActorThreatActivity | null>(null);
   const [enrichment, setEnrichment] = useState<ActorEnrichment | null>(null);
+  const [aiAnalysis, setAiAnalysis] = useState<ActorAIAnalysis | null>(null);
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [categoryPages, setCategoryPages] = useState<
     Record<string, { activities: ActorThreatActivity["activities"]; total: number; page: number; loading: boolean }>
@@ -106,6 +109,7 @@ export default function ActorProfileView({
     setBreakdown(null);
     setThreatActivity(null);
     setEnrichment(null);
+    setAiAnalysis(null);
     setExpandedCategory(null);
     setCategoryPages({});
     getActorProfile(actorId)
@@ -141,6 +145,16 @@ export default function ActorProfileView({
           shared_wallet_across_platforms: false,
           shared_pgp_key_across_platforms: false,
           platform_migration_order: [],
+        })
+      );
+    getActorAIAnalysis(actorId)
+      .then(setAiAnalysis)
+      .catch(() =>
+        setAiAnalysis({
+          personas: [],
+          pairs: [],
+          status_message: "AI analysis temporarily unavailable.",
+          method: "",
         })
       );
   }, [actorId, retryToken]);
@@ -779,17 +793,147 @@ export default function ActorProfileView({
         <div className="section-card">
           <div className="section-heading">
             <PenIcon width={16} height={16} />
-            <h3>Style profiles</h3>
-            <span className="section-count">{profile.style_profiles.length}</span>
+            <h3>AI Stylometric &amp; Behavioral Analysis</h3>
+            <span className="section-count">{aiAnalysis?.pairs.length ?? 0}</span>
           </div>
-          {profile.style_profiles.length === 0 ? (
-            <p className="muted">None recorded.</p>
+          <p className="muted" style={{ marginBottom: "0.75rem" }}>
+            Argus compares writing and activity patterns across this actor's observed personas
+            using machine-learning text/behavior similarity to identify potentially related
+            identities. This is supporting intelligence only — it does not independently
+            establish real-world identity, and is kept separate from the attribution confidence
+            above.
+          </p>
+          {aiAnalysis === null ? (
+            <SkeletonBlock height={120} />
+          ) : aiAnalysis.status_message ? (
+            <p className="muted">{aiAnalysis.status_message}</p>
           ) : (
-            <p className="muted">
-              {profile.style_profiles.length} stylometric sample
-              {profile.style_profiles.length === 1 ? "" : "s"} contributed to the
-              behavioral-analysis signal for this actor.
-            </p>
+            <div>
+              <div className="signal-list" style={{ marginBottom: "1rem" }}>
+                <div className="signal-row">
+                  <span className="signal-label">Samples analyzed</span>
+                  <span className="signal-value">
+                    {aiAnalysis.personas.reduce((sum, p) => sum + p.sample_count, 0)}
+                  </span>
+                </div>
+                <div className="signal-row">
+                  <span className="signal-label">Personas compared</span>
+                  <span className="signal-value">{aiAnalysis.personas.length}</span>
+                </div>
+                <div className="signal-row">
+                  <span className="signal-label">Platforms</span>
+                  <span className="signal-value">
+                    {new Set(aiAnalysis.personas.map((p) => p.platform)).size}
+                  </span>
+                </div>
+              </div>
+
+              {aiAnalysis.pairs.map((pair, i) => (
+                <div
+                  key={`${pair.persona_a.username}-${pair.persona_b.username}-${i}`}
+                  className="threat-category-block"
+                  style={{ padding: "1rem", marginBottom: "0.75rem" }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.5rem" }}>
+                    <strong>
+                      {pair.persona_a.username} <span className="muted">({pair.persona_a.platform})</span>
+                      {"  ↔  "}
+                      {pair.persona_b.username} <span className="muted">({pair.persona_b.platform})</span>
+                    </strong>
+                  </div>
+
+                  {pair.insufficient_data_reason ? (
+                    <p className="muted">{pair.insufficient_data_reason}</p>
+                  ) : (
+                    <>
+                      <div className="signal-list">
+                        <div className="signal-row">
+                          <span className="signal-label">Stylometric similarity</span>
+                          <div className="signal-bar">
+                            <div
+                              className="signal-bar-fill"
+                              style={{ width: `${(pair.stylometric_similarity ?? 0) * 100}%` }}
+                            />
+                          </div>
+                          <span className="signal-value">
+                            {((pair.stylometric_similarity ?? 0) * 100).toFixed(0)}%
+                          </span>
+                        </div>
+                        {pair.behavioral_similarity !== null && (
+                          <div className="signal-row">
+                            <span className="signal-label">Behavioural similarity</span>
+                            <div className="signal-bar">
+                              <div
+                                className="signal-bar-fill"
+                                style={{ width: `${pair.behavioral_similarity * 100}%` }}
+                              />
+                            </div>
+                            <span className="signal-value">
+                              {(pair.behavioral_similarity * 100).toFixed(0)}%
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      <table style={{ marginTop: "0.75rem" }}>
+                        <thead>
+                          <tr>
+                            <th>Observed AI signal</th>
+                            <th>Result</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pair.signals.map((s) => (
+                            <tr key={s.name}>
+                              <td>{s.name}</td>
+                              <td>{s.bucket}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+
+                      {pair.evidence_samples.length > 0 && (
+                        <table style={{ marginTop: "0.75rem" }}>
+                          <thead>
+                            <tr>
+                              <th>Platform</th>
+                              <th>Persona</th>
+                              <th>Source record</th>
+                              <th>Observed</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pair.evidence_samples.map((e, ei) => (
+                              <tr key={ei}>
+                                <td>
+                                  {e.platform} <Badge variant={platformBadgeVariant(e.platform)} />
+                                </td>
+                                <td className="mono">{e.persona_username}</td>
+                                <td className="muted">{e.title ?? e.source_record_id}</td>
+                                <td>
+                                  {e.observed_at ? new Date(e.observed_at).toLocaleDateString() : "—"}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </>
+                  )}
+                </div>
+              ))}
+
+              {aiAnalysis.method && (
+                <p className="muted" style={{ fontSize: "0.78rem", marginTop: "0.5rem" }}>
+                  Method: {aiAnalysis.method}
+                </p>
+              )}
+              <p className="muted" style={{ fontSize: "0.8rem", marginTop: "0.5rem" }}>
+                Interpretation: AI analysis provides supporting evidence of similar writing/
+                behaviour patterns. It should be evaluated together with identifiers,
+                infrastructure, and other attribution evidence — not on its own.
+              </p>
+            </div>
           )}
         </div>
       </section>

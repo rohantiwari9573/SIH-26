@@ -21,7 +21,16 @@ from app.schemas.actor import (
     ThreatActivityOut,
     ThreatCategorySummary,
 )
+from app.schemas.ai_analysis import (
+    ActorAIAnalysisOut,
+    AIEvidenceSampleOut,
+    AIPairAnalysisOut,
+    AIPersonaSummary,
+    AISignalOut,
+)
+from app.services.actor_ai_analysis import compute_actor_ai_analysis
 from app.services.actor_enrichment import compute_actor_enrichment
+from app.services.ai_stylometry import METHOD_DESCRIPTION, InsufficientData, PairAnalysis
 from app.services.attribution_explain import explain_attribution
 from app.services.graph.relationship_mapper import get_actor_graph
 from app.services.threat_activity import get_actor_threat_activities, summarize_by_category
@@ -159,6 +168,63 @@ def get_actor_enrichment(actor_id: uuid.UUID, db: Session = Depends(get_db)):
         shared_wallet_across_platforms=enrichment.shared_wallet_across_platforms,
         shared_pgp_key_across_platforms=enrichment.shared_pgp_key_across_platforms,
         platform_migration_order=enrichment.platform_migration_order,
+    )
+
+
+@router.get("/{actor_id}/ai-analysis", response_model=ActorAIAnalysisOut)
+def get_actor_ai_analysis(actor_id: uuid.UUID, db: Session = Depends(get_db)):
+    """AI/ML stylometric + behavioural comparison between this actor's
+    already-clustered personas — see app.services.ai_stylometry /
+    app.services.actor_ai_analysis. Deliberately separate from
+    attribution-breakdown: this answers "how similar is their writing/
+    behaviour", not "how strong is the total attribution evidence" —
+    never touches confidence_score."""
+    actor = (
+        db.query(Actor)
+        .options(selectinload(Actor.identifiers))
+        .filter(Actor.id == actor_id)
+        .first()
+    )
+    if actor is None:
+        raise HTTPException(status_code=404, detail="Actor not found")
+
+    result = compute_actor_ai_analysis(db, actor)
+
+    pairs_out: list[AIPairAnalysisOut] = []
+    for pair in result.pairs:
+        if isinstance(pair.analysis, PairAnalysis):
+            pairs_out.append(
+                AIPairAnalysisOut(
+                    persona_a=AIPersonaSummary(**vars(pair.persona_a)),
+                    persona_b=AIPersonaSummary(**vars(pair.persona_b)),
+                    stylometric_similarity=pair.analysis.stylometric_similarity,
+                    behavioral_similarity=pair.analysis.behavioral_similarity,
+                    signals=[AISignalOut(**vars(s)) for s in pair.analysis.signals],
+                    evidence_samples=[
+                        AIEvidenceSampleOut(**vars(e)) for e in pair.evidence_samples
+                    ],
+                    insufficient_data_reason=None,
+                )
+            )
+        else:
+            assert isinstance(pair.analysis, InsufficientData)
+            pairs_out.append(
+                AIPairAnalysisOut(
+                    persona_a=AIPersonaSummary(**vars(pair.persona_a)),
+                    persona_b=AIPersonaSummary(**vars(pair.persona_b)),
+                    stylometric_similarity=None,
+                    behavioral_similarity=None,
+                    signals=[],
+                    evidence_samples=[],
+                    insufficient_data_reason=pair.analysis.reason,
+                )
+            )
+
+    return ActorAIAnalysisOut(
+        personas=[AIPersonaSummary(**vars(p)) for p in result.personas],
+        pairs=pairs_out,
+        status_message=result.status_message,
+        method=METHOD_DESCRIPTION,
     )
 
 
