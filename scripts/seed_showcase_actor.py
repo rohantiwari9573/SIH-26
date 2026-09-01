@@ -36,15 +36,14 @@ PERSONAS = [
         "username": "obsidian_broker99",
         "platform": "mock_marketplace_1",
         "sample_text": (
-            "Honestly, I think this batch is better than the last one, really. "
-            "You should trust the process here, I mean that, truly. Escrow is "
-            "fine for new buyers, I have done this a long time and nobody has "
-            "ever had a real problem with me, not once, not one time. I don't "
-            "rush anything, I check everything twice before it goes out, "
-            "because honestly I think that is just how it should be done. If I "
-            "don't reply right away it is because I am, honestly, dealing with "
-            "several other people at the same time, so please just trust the "
-            "process and give it a day or two, I really do mean it."
+            "Stock updated. Ships same day, no exceptions, no delays unless "
+            "stated otherwise in the announcement thread. PGP only for "
+            "sensitive messages, plaintext gets ignored, no exceptions to "
+            "that either. Quantities above the listed max need a direct "
+            "message first, don't just order it, I'll cancel it. Returns "
+            "aren't accepted past 48 hours, check the listing photos "
+            "closely before you buy, they're accurate. Vouches available on "
+            "request, I've been around, ask the regulars if you're unsure."
         ),
         "wallet": "1PerfectShowcaseWalletDemo000009999",
         "pgp_key": "DEMO-PGP-KEY-SHOWCASE-PERFECT999",
@@ -55,15 +54,13 @@ PERSONAS = [
         "username": "phantomtrade_88",
         "platform": "mock_marketplace_2",
         "sample_text": (
-            "Honestly, I think this new batch is better than before, really. "
-            "You should really trust the process, I mean that, truly. Escrow "
-            "is fine, I have been doing this a long time now and honestly "
-            "nobody has ever had a real problem with me either, not once, not "
-            "one time. I don't rush anything, I really do check everything "
-            "twice before it goes out, because honestly that is just how it "
-            "should be done. If I don't reply right away it is, honestly, "
-            "because I am dealing with several other people at once, so "
-            "please really just trust the process, I mean it."
+            "Stock updated again. Ships same day, no exceptions, no delays "
+            "unless the announcement thread says otherwise. PGP only for "
+            "anything sensitive, plaintext messages get ignored here too, "
+            "no exceptions. Quantities above the listed max need a direct "
+            "message first, don't just place the order, it'll get "
+            "cancelled. Returns aren't accepted past 48 hours, check the "
+            "listing photos closely, they're accurate every time."
         ),
         "wallet": "1PerfectShowcaseWalletDemo000009999",
         "pgp_key": "DEMO-PGP-KEY-SHOWCASE-PERFECT999",
@@ -73,15 +70,13 @@ PERSONAS = [
         "username": "cipherline_vendor",
         "platform": "mock_marketplace_3",
         "sample_text": (
-            "Honestly, I really think this batch is better than the last, "
-            "truly. You should trust the process here, I mean that, really. "
-            "Escrow is fine for new buyers, I have done this a long time and "
-            "nobody has ever had a real problem with me, not once, not one "
-            "time at all. I don't rush anything, I check everything twice "
-            "before it ships out, because honestly that is just how it should "
-            "be done. If I don't reply right away it is because, honestly, I "
-            "am dealing with several other people at once, so please just "
-            "trust the process, I really do mean it."
+            "Stock updated once more. Ships same day, no exceptions, no "
+            "delays unless the thread says otherwise. PGP only for "
+            "sensitive messages, plaintext gets ignored, no exceptions "
+            "here either. Quantities above the listed max need a direct "
+            "message first, don't just order it, it will be cancelled. "
+            "Returns aren't accepted past 48 hours, check the listing "
+            "photos closely before buying, they are always accurate."
         ),
         "wallet": "1PerfectShowcaseWalletDemo000009999",
         "pgp_key": "DEMO-PGP-KEY-SHOWCASE-PERFECT999",
