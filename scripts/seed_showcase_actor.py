@@ -26,7 +26,7 @@ Run: docker compose exec api python scripts/seed_showcase_actor.py
 from datetime import datetime, timedelta, timezone
 
 from app.db.session import SessionLocal
-from app.models.actor import RawActivity, RawPersona
+from app.models.actor import RawActivity, RawPersona, ThreatActivity
 from app.services.pipeline import run_full_analysis
 
 USERNAMES = ["obsidian_broker99", "phantomtrade_88", "cipherline_vendor"]
@@ -129,6 +129,21 @@ def main() -> None:
         old_personas = db.query(RawPersona).filter(RawPersona.username.in_(USERNAMES)).all()
         old_persona_ids = [p.id for p in old_personas]
         if old_persona_ids:
+            old_activity_ids = [
+                r.id
+                for r in db.query(RawActivity.id).filter(
+                    RawActivity.raw_persona_id.in_(old_persona_ids)
+                )
+            ]
+            if old_activity_ids:
+                # A prior run's ThreatActivity rows still reference these
+                # RawActivity ids (run_full_analysis only rebuilds
+                # ThreatActivity when it runs, which hasn't happened yet in
+                # THIS invocation) -- must go first or the FK blocks the
+                # RawActivity delete below.
+                db.query(ThreatActivity).filter(
+                    ThreatActivity.raw_activity_id.in_(old_activity_ids)
+                ).delete(synchronize_session=False)
             db.query(RawActivity).filter(
                 RawActivity.raw_persona_id.in_(old_persona_ids)
             ).delete(synchronize_session=False)
