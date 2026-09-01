@@ -269,8 +269,8 @@ export default function ActorProfileView({
           {profile.identifiers.length === 1 ? "" : "s"}
         </span>
         <span className="stat-chip">
-          <strong>{threatActivity ? threatActivity.summary.length : "…"}</strong>&nbsp;threat
-          category{threatActivity?.summary.length === 1 ? "" : "ies"}
+          <strong>{threatActivity ? threatActivity.summary.length : "…"}</strong>&nbsp;threat{" "}
+          {threatActivity?.summary.length === 1 ? "category" : "categories"}
         </span>
         {enrichment?.first_observed && (
           <span className="stat-chip">
