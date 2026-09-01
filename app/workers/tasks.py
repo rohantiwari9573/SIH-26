@@ -34,16 +34,22 @@ def reanalyze_all(self) -> dict:
     Persists a real AnalysisJob row for this run — see that model's
     docstring for why this is the one path that populates it (CLI scripts
     call run_full_analysis directly, bypassing Celery)."""
+    # Everything, including the initial job-row insert, lives inside this
+    # try/finally — db.close() must run even if the *first* commit fails
+    # (e.g. a transient DB error), or the session/connection leaks. This
+    # task runs once per lead submission, so a leak here compounds across
+    # runs until the connection pool is exhausted.
     db = SessionLocal()
-    job = AnalysisJob(
-        job_type="reanalyze_all",
-        status="running",
-        target="full pipeline reanalysis (all raw personas)",
-        task_id=self.request.id,
-    )
-    db.add(job)
-    db.commit()
     try:
+        job = AnalysisJob(
+            job_type="reanalyze_all",
+            status="running",
+            target="full pipeline reanalysis (all raw personas)",
+            task_id=self.request.id,
+        )
+        db.add(job)
+        db.commit()
+
         actors = run_full_analysis(db)
         result = {
             "actor_count": len(actors),

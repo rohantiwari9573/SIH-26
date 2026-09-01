@@ -20,7 +20,7 @@ def list_recent_jobs(page: int = 1, page_size: int = 20, db: Session = Depends(g
     total = db.query(AnalysisJob).count()
     jobs = (
         db.query(AnalysisJob)
-        .order_by(AnalysisJob.created_at.desc())
+        .order_by(AnalysisJob.created_at.desc(), AnalysisJob.id)
         .offset((page - 1) * page_size)
         .limit(page_size)
         .all()

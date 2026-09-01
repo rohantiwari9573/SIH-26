@@ -23,10 +23,16 @@ class CategorySummary:
 
 
 def get_actor_threat_activities(db: Session, actor_id: uuid.UUID) -> list[ThreatActivity]:
+    # id is a real tiebreaker, not decoration: many rows legitimately share
+    # observed_at (often NULL — see ThreatActivity's docstring), and without
+    # a deterministic secondary key, two separate paginated fetches of the
+    # same actor (GET .../threat-activity?page=1, then ?page=2) can return
+    # tied rows in a different relative order, silently skipping or
+    # duplicating activities across pages.
     return (
         db.query(ThreatActivity)
         .filter(ThreatActivity.actor_id == actor_id)
-        .order_by(ThreatActivity.observed_at.desc().nullslast())
+        .order_by(ThreatActivity.observed_at.desc().nullslast(), ThreatActivity.id)
         .all()
     )
 

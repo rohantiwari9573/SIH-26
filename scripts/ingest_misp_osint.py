@@ -101,6 +101,16 @@ def _fetch_indicators(db, source: str, base_url: str, event_uuid: str) -> int:
                     category=attr.get("category"),
                 )
             )
+            # SessionLocal is autoflush=False (app/db/session.py) — without
+            # this, two attributes in the SAME event sharing (type, value)
+            # but different category (real MISP events do this, e.g. a
+            # domain tagged under both "Network activity" and "Payload
+            # delivery") would both pass the "not found" check above and
+            # both get added, crashing the eventual commit on
+            # uq_misp_indicator. Reproduced live before this fix — see
+            # scripts/ingest_evolution.py's _upsert_raw_activities for the
+            # same crash class.
+            db.flush()
             upserted += 1
     return upserted
 
@@ -111,9 +121,17 @@ def main(limit: int, indicator_limit: int) -> None:
         total_upserted = 0
         total_indicators = 0
         for source, manifest_url in FEEDS.items():
-            resp = httpx.get(manifest_url, timeout=30)
-            resp.raise_for_status()
-            manifest: dict = resp.json()
+            # Each feed is independent — one being unreachable (network
+            # blip, 503, feed reorganization) must not abort the other,
+            # otherwise-healthy feed. Mirrors _fetch_indicators' existing
+            # per-event error handling one level up.
+            try:
+                resp = httpx.get(manifest_url, timeout=30)
+                resp.raise_for_status()
+                manifest: dict = resp.json()
+            except httpx.HTTPError as exc:
+                print(f"MISP OSINT: skipping {source}, manifest fetch failed: {exc}")
+                continue
 
             # Most-recent-first: the manifest has no guaranteed order, so sort by date.
             events = sorted(

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ActorGraph, ActorProfile, ApiError, CorrelationEvidence, GraphEdge, getActorGraph } from "./api";
 import { computeLayout } from "./forceLayout";
 import { AlertIcon, KeyIcon, NetworkIcon, ServerIcon, UserIcon, WalletIcon } from "./icons";
@@ -185,8 +185,14 @@ export default function GraphView({
   const [relationshipTypes, setRelationshipTypes] = useState<Set<string>>(new Set());
   const [source, setSource] = useState("");
   const [retryToken, setRetryToken] = useState(0);
+  // Guards against out-of-order responses: rapidly changing depth/filters
+  // fires overlapping requests, and a slower earlier response landing after
+  // a faster later one would render a graph that doesn't match the
+  // currently-selected filters, with no visible sign anything is wrong.
+  const requestSeqRef = useRef(0);
 
   useEffect(() => {
+    const seq = ++requestSeqRef.current;
     setGraph(null);
     setError(null);
     setSelection(null);
@@ -196,10 +202,14 @@ export default function GraphView({
       relationshipTypes: [...relationshipTypes],
       source: source || null,
     })
-      .then(setGraph)
-      .catch((err) =>
-        setError(err instanceof ApiError ? err.message : "Failed to load relationship graph")
-      );
+      .then((g) => {
+        if (requestSeqRef.current === seq) setGraph(g);
+      })
+      .catch((err) => {
+        if (requestSeqRef.current === seq) {
+          setError(err instanceof ApiError ? err.message : "Failed to load relationship graph");
+        }
+      });
   }, [actorId, depth, entityTypes, relationshipTypes, source, retryToken]);
 
   function resetFilters() {

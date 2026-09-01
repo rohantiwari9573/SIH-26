@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { ActorSearchResult, ApiError, listActors, searchActors } from "./api";
 import ConfidenceBadge from "./ConfidenceBadge";
 import { AlertIcon, InboxIcon, SearchIcon, UserIcon } from "./icons";
@@ -19,6 +19,12 @@ export default function SearchView({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [retryToken, setRetryToken] = useState(0);
+  // Guards against out-of-order responses: clicking Next/Previous rapidly
+  // fires overlapping requests, and network timing doesn't guarantee they
+  // resolve in send order — without this, a slower page-N response landing
+  // after a faster page-(N+1) response would desync the pager label from
+  // what's actually displayed.
+  const requestSeqRef = useRef(0);
 
   // Real server-side pagination for the un-searched browse list — with 141+
   // real actors already past the old hardcoded 100-row cap, loading
@@ -27,19 +33,27 @@ export default function SearchView({
   // stays as its own server-capped-at-50 endpoint — see api.ts.
   useEffect(() => {
     if (activeQuery) return;
+    const seq = ++requestSeqRef.current;
     setError(null);
     setLoading(true);
     listActors(page, PAGE_SIZE)
       .then((r) => {
+        if (requestSeqRef.current !== seq) return; // superseded by a newer request
         setResults(r.items);
         setTotal(r.total);
       })
-      .catch((err) => setError(err instanceof ApiError ? err.message : "Failed to load actors"))
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        if (requestSeqRef.current !== seq) return;
+        setError(err instanceof ApiError ? err.message : "Failed to load actors");
+      })
+      .finally(() => {
+        if (requestSeqRef.current === seq) setLoading(false);
+      });
   }, [page, activeQuery, retryToken]);
 
   async function handleSearch(e: FormEvent) {
     e.preventDefault();
+    const seq = ++requestSeqRef.current; // supersede any in-flight browse-effect request
     setError(null);
     setLoading(true);
     const trimmed = query.trim();
@@ -48,17 +62,20 @@ export default function SearchView({
     try {
       if (trimmed) {
         const data = await searchActors(trimmed);
+        if (requestSeqRef.current !== seq) return;
         setResults(data);
         setTotal(null);
       } else {
         const data = await listActors(1, PAGE_SIZE);
+        if (requestSeqRef.current !== seq) return;
         setResults(data.items);
         setTotal(data.total);
       }
     } catch (err) {
+      if (requestSeqRef.current !== seq) return;
       setError(err instanceof ApiError ? err.message : "Search failed");
     } finally {
-      setLoading(false);
+      if (requestSeqRef.current === seq) setLoading(false);
     }
   }
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActorProfile,
   ActorThreatActivity,
@@ -122,8 +122,17 @@ export default function ActorProfileView({
   }, [actorId, retryToken]);
 
   const CATEGORY_PAGE_SIZE = 25;
+  // Guards against out-of-order responses: rapidly clicking Next/Previous
+  // fires overlapping requests for the same category, and network timing
+  // doesn't guarantee they resolve in the order they were sent. Each call
+  // stamps its own sequence number per category and only applies its
+  // result if it's still the most recent request for that category.
+  const categoryRequestSeqRef = useRef<Record<string, number>>({});
 
   async function loadCategoryPage(category: string, page: number) {
+    const seq = (categoryRequestSeqRef.current[category] ?? 0) + 1;
+    categoryRequestSeqRef.current[category] = seq;
+
     setCategoryPages((prev) => ({
       ...prev,
       [category]: {
@@ -135,11 +144,13 @@ export default function ActorProfileView({
     }));
     try {
       const data = await getActorThreatActivity(actorId, { category, page, pageSize: CATEGORY_PAGE_SIZE });
+      if (categoryRequestSeqRef.current[category] !== seq) return; // superseded by a newer request
       setCategoryPages((prev) => ({
         ...prev,
         [category]: { activities: data.activities, total: data.activities_total, page, loading: false },
       }));
     } catch {
+      if (categoryRequestSeqRef.current[category] !== seq) return;
       setCategoryPages((prev) => ({
         ...prev,
         [category]: { activities: [], total: 0, page, loading: false },

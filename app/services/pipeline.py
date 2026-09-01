@@ -255,11 +255,23 @@ def run_full_analysis(
 
     # Deterministic correlation against the four "live/feed" sources (Tor
     # Onionoo, both MISP feeds, HIBP) — see app.services.correlation. Runs
-    # in the same session/transaction as everything above (autoflush makes
-    # the InfraFinding rows just added visible to its queries) so a fresh
-    # infra leak is checked against already-ingested external intel
-    # immediately, not on some separate schedule. Deliberately does NOT
-    # touch confidence/scoring — see that module's docstring.
+    # in the same session/transaction as everything above so a fresh infra
+    # leak is checked against already-ingested external intel immediately,
+    # not on some separate schedule. Deliberately does NOT touch
+    # confidence/scoring — see that module's docstring.
+    #
+    # Explicit flush required: SessionLocal is autoflush=False (see
+    # app/db/session.py), so without this, correlate_*'s queries (e.g.
+    # _infra_lookup's db.query(InfraFinding).all()) would not see the very
+    # last persona's/cluster's InfraFinding/Identifier rows added above,
+    # which were only implicitly flushed by a *later* iteration's flush
+    # calls — there is no later iteration for the last one. Currently
+    # dormant (pipeline-created InfraFinding rows don't yet populate the
+    # resolved_ip/subject_cn/san fields correlate_* keys on, so the gap
+    # doesn't change today's output) but real and load-bearing the moment
+    # that changes — see the autoflush=False class of bug this session
+    # already hit once in scripts/ingest_evolution.py.
+    db.flush()
     correlate_tor_relays(db)
     correlate_misp_indicators(db)
     correlate_hibp_breaches(db)
