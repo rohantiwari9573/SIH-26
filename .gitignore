@@ -12,6 +12,7 @@ htmlcov/
 node_modules/
 dist/
 build/
+*.tsbuildinfo
 .idea/
 .vscode/
 *.log

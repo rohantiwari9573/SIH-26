@@ -1,0 +1,14 @@
+# Argus
+
+> Dark-web threat actor attribution platform. Unifies identities, PGP
+> keys, wallets, infrastructure indicators, and behavioral evidence
+> gathered from marketplace/forum sources into a single investigative
+> graph, with AI-based stylometric and behavioral persona analysis
+> contributing supporting (not standalone) attribution evidence.
+
+Argus is an authenticated internal investigation tool, not a public
+content site — there are no public pages for an LLM or crawler to read.
+All data behind the login is real ingested intelligence (mock/synthetic
+demo entries are explicitly labeled "SYNTHETIC / CONTROLLED" in the UI,
+never mixed silently with real data). See /robots.txt: this site
+requests exclusion from search indexing for the same reason.

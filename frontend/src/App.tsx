@@ -1,24 +1,30 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { isLoggedIn, logout } from "./api";
 import LoginView from "./LoginView";
-import SearchView from "./SearchView";
-import ActorProfileView from "./ActorProfileView";
-import SubmitLeadView from "./SubmitLeadView";
+import NotFoundView from "./NotFoundView";
 import DashboardView from "./DashboardView";
-import InfrastructureView from "./InfrastructureView";
-import IndicatorsView from "./IndicatorsView";
-import TimelineView from "./TimelineView";
-import AttributionView from "./AttributionView";
-import SourcesView from "./SourcesView";
-import DemoScenarioView from "./DemoScenarioView";
-import HiddenServicesView from "./HiddenServicesView";
-import MarketplacesView from "./MarketplacesView";
-import ForumsView from "./ForumsView";
-import AlertsView from "./AlertsView";
-import ReportsView from "./ReportsView";
-import JobsScansView from "./JobsScansView";
 import Sidebar from "./Sidebar";
-import { EyeIcon, LogOutIcon, PlusIcon } from "./icons";
+import { EyeIcon, LoaderIcon, LogOutIcon, PlusIcon } from "./icons";
+
+// Dashboard loads eagerly (it's the screen every session lands on right
+// after login); every other view is only ever needed once a user clicks
+// into it, so they're code-split into their own chunks rather than
+// bundled into the initial JS payload.
+const SearchView = lazy(() => import("./SearchView"));
+const ActorProfileView = lazy(() => import("./ActorProfileView"));
+const SubmitLeadView = lazy(() => import("./SubmitLeadView"));
+const InfrastructureView = lazy(() => import("./InfrastructureView"));
+const IndicatorsView = lazy(() => import("./IndicatorsView"));
+const TimelineView = lazy(() => import("./TimelineView"));
+const AttributionView = lazy(() => import("./AttributionView"));
+const SourcesView = lazy(() => import("./SourcesView"));
+const DemoScenarioView = lazy(() => import("./DemoScenarioView"));
+const HiddenServicesView = lazy(() => import("./HiddenServicesView"));
+const MarketplacesView = lazy(() => import("./MarketplacesView"));
+const ForumsView = lazy(() => import("./ForumsView"));
+const AlertsView = lazy(() => import("./AlertsView"));
+const ReportsView = lazy(() => import("./ReportsView"));
+const JobsScansView = lazy(() => import("./JobsScansView"));
 
 // Settings was deliberately removed rather than implemented: Argus has no
 // persisted, user-configurable application setting anywhere (API keys and
@@ -45,6 +51,15 @@ export type View =
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(isLoggedIn());
   const [view, setView] = useState<View>({ name: "dashboard" });
+  // The app never changes window.location.pathname itself (in-app
+  // navigation only pushes history *state*, not a new URL — see the
+  // pushState call below), so a one-time check of the path this document
+  // actually loaded at is enough to tell "real Argus URL" from "unknown
+  // path someone typed/linked to" for the whole session.
+  const [invalidPath] = useState<string | null>(() => {
+    const p = window.location.pathname;
+    return p === "/" ? null : p;
+  });
   // The app has no URL routing (view lives only in React state), so the
   // browser's own history stack never gets an entry per screen. Without
   // this, pressing the physical/gesture Back button has nothing of ours to
@@ -73,6 +88,10 @@ export default function App() {
     if (!isPoppingRef.current) {
       window.history.pushState({ view: next }, "");
     }
+  }
+
+  if (invalidPath) {
+    return <NotFoundView path={invalidPath} />;
   }
 
   if (!loggedIn) {
@@ -123,6 +142,13 @@ export default function App() {
       <div className="app-body">
         <Sidebar active={view.name} onSelect={handleNav} />
         <main>
+          <Suspense
+            fallback={
+              <div className="centered" style={{ minHeight: "auto", padding: "4rem 0" }}>
+                <LoaderIcon width={20} height={20} />
+              </div>
+            }
+          >
           {view.name === "dashboard" && <DashboardView onSelectActor={selectActor} />}
           {view.name === "search" && <SearchView onSelectActor={selectActor} />}
           {view.name === "profile" && (
@@ -141,6 +167,7 @@ export default function App() {
           {view.name === "alerts" && <AlertsView onSelectActor={selectActor} />}
           {view.name === "reports" && <ReportsView onSelectActor={selectActor} />}
           {view.name === "jobs" && <JobsScansView />}
+          </Suspense>
         </main>
       </div>
     </div>

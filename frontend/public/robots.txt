@@ -1,0 +1,8 @@
+# Argus is an authenticated investigative-intelligence tool over real
+# ingested dark-web data (see docs/ETHICS.md), not a public content site.
+# Deliberately kept out of search indexes rather than optimized for
+# crawling -- there is no public/anonymous content behind this login wall
+# for a crawler to usefully index, and no sitemap.xml is published for the
+# same reason (nothing here is meant to be discovered via search).
+User-agent: *
+Disallow: /
