@@ -54,7 +54,8 @@ class Identifier(Base):
 
 
 class InfraFinding(Base):
-    """A leak discovered while scanning a hidden service (SSL reuse, banner, exposed page)."""
+    """A leak discovered while scanning a hidden service (SSL reuse, banner,
+    exposed default/status page, or clock skew)."""
 
     __tablename__ = "infra_findings"
 
@@ -65,7 +66,9 @@ class InfraFinding(Base):
         UUID(as_uuid=True), ForeignKey("actors.id"), nullable=True
     )
     onion_address: Mapped[str] = mapped_column(String(255))
-    finding_type: Mapped[str] = mapped_column(String(64))  # ssl_leak | banner | default_page
+    finding_type: Mapped[str] = mapped_column(
+        String(64)
+    )  # ssl_leak | banner | default_page | clock_skew
     detail: Mapped[dict] = mapped_column(JSON, default=dict)
     resolved_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
     discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

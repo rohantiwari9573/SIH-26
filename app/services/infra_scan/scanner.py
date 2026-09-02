@@ -1,14 +1,24 @@
 """Infrastructure fingerprinting: finds operational-security mistakes that leak a
 hidden service's real-world location — SSL certificate reuse, verbose banners,
-and default/exposed pages.
+exposed default/status pages, and clock-skew inconsistencies.
+
+Maps directly to the four examples SIH PS-26151 names for this pillar:
+  - exposed server-status pages       -> check_default_page
+  - SSL certs linked to clearnet      -> check_ssl_certificate
+  - default service banners           -> check_http_banner, check_default_page
+  - descriptor inconsistencies        -> check_clock_skew (see its docstring
+                                          for why clock skew is the honest,
+                                          implementable reading of this one)
 
 Designed to run against a target the team controls (a mock onion service /
 local test server with deliberately introduced leaks), per the project's
 ethics policy — see docs/ETHICS.md. Do not point this at real onion services.
 """
+import email.utils
 import socket
 import ssl
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 import httpx
 from cryptography import x509
@@ -16,7 +26,7 @@ from cryptography import x509
 
 @dataclass
 class InfraFinding:
-    finding_type: str  # ssl_leak | banner | default_page
+    finding_type: str  # ssl_leak | banner | default_page | clock_skew
     detail: dict = field(default_factory=dict)
 
 
@@ -89,6 +99,105 @@ def check_http_banner(base_url: str, timeout: float = 5.0) -> InfraFinding | Non
     )
 
 
+# Signatures for well-known default-install/status pages left exposed
+# instead of being replaced with real content or locked down — real,
+# frequently-found misconfigurations, not hypothetical ones. Matched as a
+# case-sensitive substring of the response body: cheap, and these are
+# framework/distro-fixed strings (not something a real marketplace page
+# would coincidentally contain), so false positives aren't a practical
+# concern here.
+_DEFAULT_PAGE_SIGNATURES = {
+    "Apache2 Ubuntu Default Page": "apache_default_page",
+    "Welcome to nginx": "nginx_default_page",
+    "IIS Windows Server": "iis_default_page",
+}
+# mod_status's own banner text — present regardless of which vhost/app is
+# behind it, so this is matched independently of the default-page table above.
+_SERVER_STATUS_SIGNATURE = "Apache Server Status"
+
+_STATUS_PATHS = ("/", "/server-status", "/server-info")
+
+
+def check_default_page(base_url: str, timeout: float = 5.0) -> InfraFinding | None:
+    """Flags a default distro/framework install page or an exposed
+    mod_status-style status page — the PS's "exposed server-status pages"
+    example, plus the closely-related "default service banners" leak of
+    never replacing the stock install page with real content. Checks a
+    short, fixed list of well-known paths rather than a general crawl: this
+    is a targeted misconfiguration check, not a content scanner.
+    """
+    for path in _STATUS_PATHS:
+        try:
+            response = httpx.get(
+                f"{base_url}{path}", timeout=timeout, follow_redirects=True, verify=False
+            )
+        except httpx.HTTPError:
+            continue
+        if response.status_code != 200:
+            continue
+        body = response.text
+
+        if _SERVER_STATUS_SIGNATURE in body:
+            return InfraFinding(
+                finding_type="default_page",
+                detail={"path": path, "signature": "server_status_exposed"},
+            )
+        for signature, label in _DEFAULT_PAGE_SIGNATURES.items():
+            if signature in body:
+                return InfraFinding(
+                    finding_type="default_page",
+                    detail={"path": path, "signature": label},
+                )
+    return None
+
+
+# Real HTTP/TCP clock-skew fingerprinting (per-machine drift from true UTC,
+# e.g. an unsynced or never-NTP'd server) has documented use in Tor
+# deanonymization research as a way to correlate a hidden service's
+# published descriptor timestamps against a candidate clearnet host's own
+# clock — a *temporal* metadata inconsistency, in the same family as the
+# PS's "descriptor inconsistencies" example, and the honestly-implementable
+# reading of it here: parsing/verifying real onion-service descriptors
+# requires being a client on the live Tor network (see docs/ETHICS.md — this
+# project deliberately never does that), so this checks the same underlying
+# signal (server-side clock drift) the way it's actually measurable against
+# a controlled HTTP(S) target.
+_CLOCK_SKEW_THRESHOLD_SECONDS = 300
+
+
+def check_clock_skew(
+    base_url: str, timeout: float = 5.0, threshold_seconds: int = _CLOCK_SKEW_THRESHOLD_SECONDS
+) -> InfraFinding | None:
+    """Flags a target whose HTTP `Date` response header disagrees with real
+    UTC by more than `threshold_seconds` — a genuinely different, unsynced
+    machine clock than whatever the hidden service's own published metadata
+    would show, not measurement noise at this threshold."""
+    try:
+        response = httpx.get(base_url, timeout=timeout, follow_redirects=True, verify=False)
+    except httpx.HTTPError:
+        return None
+
+    date_header = response.headers.get("date")
+    if not date_header:
+        return None
+
+    try:
+        server_time = email.utils.parsedate_to_datetime(date_header)
+    except (TypeError, ValueError):
+        return None
+    if server_time.tzinfo is None:
+        server_time = server_time.replace(tzinfo=timezone.utc)
+
+    skew_seconds = (server_time - datetime.now(timezone.utc)).total_seconds()
+    if abs(skew_seconds) <= threshold_seconds:
+        return None
+
+    return InfraFinding(
+        finding_type="clock_skew",
+        detail={"server_date": date_header, "skew_seconds": round(skew_seconds)},
+    )
+
+
 def scan_target(
     onion_address: str, clearnet_host: str | None = None, port: int = 443
 ) -> list[InfraFinding]:
@@ -104,7 +213,12 @@ def scan_target(
     if (finding := check_ssl_certificate(clearnet_host, port=port)) is not None:
         findings.append(finding)
     port_suffix = "" if port == 443 else f":{port}"
-    if (finding := check_http_banner(f"https://{clearnet_host}{port_suffix}")) is not None:
+    base_url = f"https://{clearnet_host}{port_suffix}"
+    if (finding := check_http_banner(base_url)) is not None:
+        findings.append(finding)
+    if (finding := check_default_page(base_url)) is not None:
+        findings.append(finding)
+    if (finding := check_clock_skew(base_url)) is not None:
         findings.append(finding)
 
     return findings

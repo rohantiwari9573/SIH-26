@@ -4,10 +4,10 @@ import { SkeletonRows } from "./Skeleton";
 import { AlertIcon, GlobeIcon } from "./icons";
 
 // PS-26151 capability A: Tor hidden-service / infrastructure deanonymization.
-// Every row here is a real InfraFinding from app.services.infra_scan
-// (SSL cert reuse, banner leaks, default pages) plus whatever real
-// deterministic correlation evidence (app.services.correlation) points at
-// it — never a claim that a Tor relay itself is a hidden service.
+// Every row here is a real InfraFinding from app.services.infra_scan (SSL
+// cert reuse, banner leaks, exposed default/status pages, clock skew) plus
+// whatever real deterministic correlation evidence (app.services.correlation)
+// points at it — never a claim that a Tor relay itself is a hidden service.
 function findingDetailSummary(finding_type: string, detail: Record<string, unknown>): string {
   if (finding_type === "ssl_leak") {
     const cn = detail.subject_cn as string | undefined;
@@ -17,6 +17,15 @@ function findingDetailSummary(finding_type: string, detail: Record<string, unkno
   if (finding_type === "banner") {
     const server = detail.server as string | undefined;
     return server ? `Server: ${server}` : "Banner leak";
+  }
+  if (finding_type === "default_page") {
+    const path = detail.path as string | undefined;
+    const signature = detail.signature as string | undefined;
+    return path ? `Exposed page: ${path}${signature ? ` (${signature})` : ""}` : "Exposed default/status page";
+  }
+  if (finding_type === "clock_skew") {
+    const skew = detail.skew_seconds as number | undefined;
+    return skew !== undefined ? `Clock skew: ${skew}s from real UTC` : "Clock skew detected";
   }
   return Object.keys(detail).length ? JSON.stringify(detail) : "—";
 }
