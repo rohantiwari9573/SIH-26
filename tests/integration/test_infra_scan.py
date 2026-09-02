@@ -94,11 +94,13 @@ def mock_target(tmp_path_factory):
     thread.join(timeout=5)
 
 
-def test_all_four_infra_leaks_detected_against_live_mock_target(mock_target):
+def test_all_five_infra_leaks_detected_against_live_mock_target(mock_target):
     """The mock target deliberately exhibits all four PS-named infra leaks
-    (SSL cert reuse, banner, exposed default/status page) plus the
-    clock-skew analog of "descriptor inconsistencies" — see
-    mock_leaky_service/app.py's module docstring and scan_target's."""
+    (SSL cert reuse, banner, exposed default/status page) plus a genuine
+    descriptor inconsistency (declared-vs-observed comparison — distinct
+    from the standalone clock-skew signal, which is also separately
+    detected) — see mock_leaky_service/app.py's module docstring and
+    scan_target's."""
     host, port = mock_target
     findings = scan_target("demo-onion-address.onion", clearnet_host=host, port=port)
     finding_types = {f.finding_type for f in findings}
@@ -107,9 +109,11 @@ def test_all_four_infra_leaks_detected_against_live_mock_target(mock_target):
     assert "banner" in finding_types, "HTTP banner leak was not detected against a live target"
     assert "default_page" in finding_types, "Default/status page leak was not detected"
     assert "clock_skew" in finding_types, "Clock-skew leak was not detected"
+    assert "descriptor_inconsistency" in finding_types, "Descriptor inconsistency was not detected"
 
     ssl_finding = next(f for f in findings if f.finding_type == "ssl_leak")
     assert ssl_finding.detail["subject_cn"] == LEAKED_COMMON_NAME
+    assert ssl_finding.severity == "high"
 
     banner_finding = next(f for f in findings if f.finding_type == "banner")
     assert "Apache" in banner_finding.detail["server"]
@@ -125,6 +129,15 @@ def test_all_four_infra_leaks_detected_against_live_mock_target(mock_target):
 
     clock_skew_finding = next(f for f in findings if f.finding_type == "clock_skew")
     assert clock_skew_finding.detail["skew_seconds"] > 60
+
+    # The descriptor-inconsistency finding must independently re-derive the
+    # same underlying contradictions (real hostname in cert, real banner
+    # present, real clock skew) as its own aggregated evidence list — not
+    # just echo the other findings.
+    descriptor_finding = next(f for f in findings if f.finding_type == "descriptor_inconsistency")
+    fields_flagged = {item["field"] for item in descriptor_finding.detail["inconsistencies"]}
+    assert fields_flagged == {"tls_common_name", "software_banner", "clock_skew_seconds"}
+    assert descriptor_finding.detail["descriptor_identifier"] == "demo-onion-address.onion"
 
 
 def test_server_status_page_reachable_directly_on_live_mock_target(mock_target):

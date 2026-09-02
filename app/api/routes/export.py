@@ -55,6 +55,7 @@ def _load_actor(actor_id: uuid.UUID, db: Session) -> Actor:
             selectinload(Actor.infra_findings),
             selectinload(Actor.style_profiles),
             selectinload(Actor.attribution_edges),
+            selectinload(Actor.real_world_entities),
         )
         .filter(Actor.id == actor_id)
         .first()
@@ -146,6 +147,15 @@ def export_csv(actor_id: uuid.UUID, db: Session = Depends(get_db)):
                 _csv_safe(ev.matched_value),
                 _csv_safe(ev.source),
                 _csv_safe(ev.description),
+            ]
+        )
+    for entity in actor.real_world_entities:
+        writer.writerow(
+            [
+                _csv_safe(f"suspected_entity_{entity.relationship_type}"),
+                _csv_safe(entity.entity_name),
+                _csv_safe(entity.source),
+                _csv_safe(f"confidence={entity.confidence}; {entity.explanation}"),
             ]
         )
     for activity in get_actor_threat_activities(db, actor_id):
@@ -303,6 +313,20 @@ def export_report(actor_id: uuid.UUID, db: Session = Depends(get_db)):
             pdf, 60, y, height,
             f"- {cat.category_label}: {cat.activity_count} {noun}, "
             f"sources: {', '.join(cat.sources)}",
+        )
+    y -= 15
+
+    y = _draw_line(
+        pdf, 50, y, height, "SUSPECTED REAL-WORLD ENTITIES", font=("Helvetica-Bold", 13)
+    )
+    y -= 5
+    if not actor.real_world_entities:
+        y = _draw_line(pdf, 60, y, height, "No evidence available.")
+    for entity in actor.real_world_entities:
+        y = _draw_line(
+            pdf, 60, y, height,
+            f"- [{entity.entity_type}] {entity.entity_name} "
+            f"({entity.confidence}, via {entity.source})",
         )
     y -= 15
 

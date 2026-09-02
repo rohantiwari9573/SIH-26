@@ -1,14 +1,20 @@
 """Infrastructure fingerprinting: finds operational-security mistakes that leak a
 hidden service's real-world location — SSL certificate reuse, verbose banners,
-exposed default/status pages, and clock-skew inconsistencies.
+exposed default/status pages, and descriptor-level inconsistencies.
 
-Maps directly to the four examples SIH PS-26151 names for this pillar:
+Maps directly to the examples SIH PS-26151 names for this pillar:
   - exposed server-status pages       -> check_default_page
   - SSL certs linked to clearnet      -> check_ssl_certificate
   - default service banners           -> check_http_banner, check_default_page
-  - descriptor inconsistencies        -> check_clock_skew (see its docstring
-                                          for why clock skew is the honest,
-                                          implementable reading of this one)
+  - descriptor inconsistencies        -> check_descriptor_inconsistency (a
+                                          genuine declared-vs-observed
+                                          comparison against a local/mock
+                                          descriptor fixture — NOT the same
+                                          thing as check_clock_skew, which is
+                                          one standalone temporal signal;
+                                          clock skew is folded in as one of
+                                          several fields the descriptor check
+                                          compares, see its docstring)
 
 Designed to run against a target the team controls (a mock onion service /
 local test server with deliberately introduced leaks), per the project's
@@ -18,16 +24,35 @@ import email.utils
 import socket
 import ssl
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from cryptography import x509
 
+# Deterministic, finding-type-level severity — not a per-instance fabricated
+# score. A direct clearnet-hostname leak in a certificate is the most
+# decisive/least-ambiguous signal this pillar can produce (it names an
+# actual candidate domain); a bare software banner is common and weak alone.
+# Fixed by finding_type the same way app.services.scoring fixes its pillar
+# WEIGHTS — documented judgment calls, not statistics.
+SEVERITY_BY_FINDING_TYPE = {
+    "ssl_leak": "high",
+    "default_page": "medium",
+    "banner": "low",
+    "clock_skew": "low",
+    "descriptor_inconsistency": "medium",
+}
+
 
 @dataclass
 class InfraFinding:
-    finding_type: str  # ssl_leak | banner | default_page | clock_skew
+    finding_type: str  # ssl_leak | banner | default_page | clock_skew | descriptor_inconsistency
     detail: dict = field(default_factory=dict)
+    severity: str = field(default="")
+
+    def __post_init__(self) -> None:
+        if not self.severity:
+            self.severity = SEVERITY_BY_FINDING_TYPE.get(self.finding_type, "low")
 
 
 def check_ssl_certificate(host: str, port: int = 443, timeout: float = 5.0) -> InfraFinding | None:
@@ -138,9 +163,14 @@ def check_default_page(base_url: str, timeout: float = 5.0) -> InfraFinding | No
         body = response.text
 
         if _SERVER_STATUS_SIGNATURE in body:
+            # A live mod_status page leaks in-flight request/connection
+            # detail, not just "software is outdated" — more severe than a
+            # bare default-install page, hence the explicit override rather
+            # than the finding_type's table-level default of "medium".
             return InfraFinding(
                 finding_type="default_page",
                 detail={"path": path, "signature": "server_status_exposed"},
+                severity="high",
             )
         for signature, label in _DEFAULT_PAGE_SIGNATURES.items():
             if signature in body:
@@ -198,13 +228,143 @@ def check_clock_skew(
     )
 
 
+# Default "clean" expectation for a correctly-run, properly-anonymized
+# hidden service: no real-world hostname in its cert, no clearnet-style
+# software banner, and (real, documented Tor protocol constant — not
+# invented) a hidden-service descriptor's default publication lifetime is 3
+# hours, so a descriptor still being served well past that is a genuine
+# staleness signal. A caller investigating a SPECIFIC target may instead
+# pass a captured declared-descriptor fixture (see docs/ETHICS.md — always
+# for a controlled/self-hosted target, never a real captured descriptor from
+# the live Tor network) to compare against that target's own prior baseline
+# rather than this generic one.
+DEFAULT_DECLARED_DESCRIPTOR = {
+    "declared_common_name": None,
+    "declared_reveals_software_banner": False,
+    "declared_published_at": None,  # ISO8601; None = freshness not checked
+    "declared_lifetime_hours": 3,
+    "max_clock_skew_seconds": _CLOCK_SKEW_THRESHOLD_SECONDS,
+}
+
+
+def check_descriptor_inconsistency(
+    onion_address: str,
+    host: str,
+    base_url: str,
+    port: int = 443,
+    timeout: float = 5.0,
+    declared: dict | None = None,
+) -> InfraFinding | None:
+    """Compares a DECLARED descriptor (what a correctly-run, properly
+    anonymized hidden service should present — either the generic baseline
+    in DEFAULT_DECLARED_DESCRIPTOR, or a fixture captured earlier for this
+    specific controlled target) against what is ACTUALLY OBSERVABLE live
+    from the target right now, across several independent fields at once.
+
+    This is deliberately a different mechanism from check_clock_skew: that
+    function flags one standalone temporal signal on its own; this one
+    performs a genuine declared-vs-observed comparison across multiple
+    descriptor-shaped properties (identity, banner, and — reusing the same
+    underlying clock measurement — timing), and reports every field that
+    disagrees together as one finding, which is what "descriptor
+    inconsistency" means in the literature: a hidden service's published
+    metadata contradicting what can actually be observed about it.
+
+    Real Tor hidden-service descriptors carry introduction-point lists and
+    signing-key data that can only be read by a live Tor client — this
+    project deliberately never connects to the real Tor network (see
+    docs/ETHICS.md), so those specific fields are NOT checked here rather
+    than fabricated. Only fields genuinely measurable against a plain
+    HTTP(S) target are compared.
+    """
+    declared = declared or DEFAULT_DECLARED_DESCRIPTOR
+    inconsistencies: list[dict] = []
+
+    ssl_finding = check_ssl_certificate(host, port=port, timeout=timeout)
+    observed_cn = ssl_finding.detail.get("subject_cn") if ssl_finding else None
+    if declared.get("declared_common_name") is None and observed_cn is not None:
+        inconsistencies.append(
+            {
+                "field": "tls_common_name",
+                "declared": "no real-world hostname",
+                "observed": observed_cn,
+            }
+        )
+    elif declared.get("declared_common_name") not in (None, observed_cn):
+        inconsistencies.append(
+            {
+                "field": "tls_common_name",
+                "declared": declared["declared_common_name"],
+                "observed": observed_cn,
+            }
+        )
+
+    banner_finding = check_http_banner(base_url, timeout=timeout)
+    reveals_banner = banner_finding is not None
+    if declared.get("declared_reveals_software_banner") is False and reveals_banner:
+        inconsistencies.append(
+            {
+                "field": "software_banner",
+                "declared": "no identifying Server/X-Powered-By headers",
+                "observed": banner_finding.detail,
+            }
+        )
+
+    skew_threshold = declared.get("max_clock_skew_seconds", _CLOCK_SKEW_THRESHOLD_SECONDS)
+    clock_finding = check_clock_skew(base_url, timeout=timeout, threshold_seconds=skew_threshold)
+    if clock_finding is not None:
+        inconsistencies.append(
+            {
+                "field": "clock_skew_seconds",
+                "declared": f"<= {skew_threshold}s from real UTC",
+                "observed": clock_finding.detail["skew_seconds"],
+            }
+        )
+
+    declared_published_at = declared.get("declared_published_at")
+    if declared_published_at:
+        published = datetime.fromisoformat(declared_published_at)
+        if published.tzinfo is None:
+            published = published.replace(tzinfo=timezone.utc)
+        lifetime = timedelta(hours=declared.get("declared_lifetime_hours", 3))
+        age = datetime.now(timezone.utc) - published
+        if age > lifetime:
+            inconsistencies.append(
+                {
+                    "field": "descriptor_freshness",
+                    "declared": f"published within the last {lifetime}",
+                    "observed": f"still served {age} after its declared publish time",
+                }
+            )
+
+    if not inconsistencies:
+        return None
+
+    return InfraFinding(
+        finding_type="descriptor_inconsistency",
+        detail={
+            "descriptor_identifier": onion_address,
+            "declared": declared,
+            "inconsistencies": inconsistencies,
+        },
+    )
+
+
 def scan_target(
-    onion_address: str, clearnet_host: str | None = None, port: int = 443
+    onion_address: str,
+    clearnet_host: str | None = None,
+    port: int = 443,
+    declared_descriptor: dict | None = None,
 ) -> list[InfraFinding]:
     """Runs all infra checks against a mirrored/mock host for the given onion address.
 
     In the demo, `clearnet_host` points at the team's own test server that mirrors
     (with deliberate leaks) what the onion service would look like.
+
+    declared_descriptor: optional override for check_descriptor_inconsistency
+    (see DEFAULT_DECLARED_DESCRIPTOR) — a captured baseline for this specific
+    controlled target, if one exists; otherwise the generic "properly
+    anonymized service" baseline is used.
     """
     findings: list[InfraFinding] = []
     if clearnet_host is None:
@@ -219,6 +379,12 @@ def scan_target(
     if (finding := check_default_page(base_url)) is not None:
         findings.append(finding)
     if (finding := check_clock_skew(base_url)) is not None:
+        findings.append(finding)
+    if (
+        finding := check_descriptor_inconsistency(
+            onion_address, clearnet_host, base_url, port=port, declared=declared_descriptor
+        )
+    ) is not None:
         findings.append(finding)
 
     return findings

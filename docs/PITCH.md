@@ -19,13 +19,17 @@ everything in the PS" question before a judge has to ask it.
 
 | PS requirement | Where it lives | Status |
 |---|---|---|
-| Infrastructure analysis (SSL leak, banner, exposed page) | `app/services/infra_scan` | Working, tested live against a real misconfigured target |
+| Infrastructure analysis (SSL leak, banner, exposed status page, descriptor inconsistency) | `app/services/infra_scan` | Working, all 5 checks tested live against a real misconfigured target and persisted with severity + scan job linkage |
+| Clearnet origin matching | `app/services/correlation.py` (`CorrelationEvidence`) | Working — deterministic exact-match against Tor Onionoo/MISP/HIBP, confidence label stored |
+| Real-world entity linkage | `app/services/entity_linkage.py` (`RealWorldEntity`) | Working — derives suspected domains/organizations from cert hostnames and HIBP/MISP correlation; always labeled "suspected," never fabricated |
 | Relationship mapping (username/PGP/wallet/trust graph) | `app/services/graph`, `app/services/attribution.py` | Working |
-| Behavioral/stylometric analysis | `app/services/stylometry` (Burrows' Delta) | Working, validated discrimination margin |
+| AI stylometric + behavioral analysis | `app/services/ai_stylometry.py` | Working — char/word n-grams, sentence structure, activity-category similarity; "similarity" language only, never "same person" |
+| Autonomous/continuous collection | Celery beat, `app/workers/tasks.run_scheduled_collection` | Working — re-pulls Onionoo/MISP/HIBP every 6h with no manual trigger |
+| Timeline querying (date range/actor/source/category) | `GET /api/dashboard/timeline` | Working — real SQL filters, not just a fixed feed |
 | DB collection, storage, analysis pipeline | Postgres + Neo4j, `scripts/ingest_and_attribute.py` | Working |
 | Query interface | React dashboard + API | Working |
-| Actor profile (identifiers + infra + confidence together) | Dashboard profile view | Working |
-| Export: CSV / JSON / report | Dashboard export buttons | Working, all 3 verified |
+| Actor profile (identifiers + infra + entities + confidence together) | Dashboard profile view | Working |
+| Export: CSV / JSON / report | Dashboard export buttons | Working, all 3 verified, includes entity linkage |
 | Category | `app/services/threat_categorization.py`, `ThreatActivity` | Working — 152 real activity records classified live from real DarkForums data, evidence-backed, never touches attribution confidence |
 
 ## Live demo script

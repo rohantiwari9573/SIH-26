@@ -31,6 +31,9 @@ class Actor(Base):
     infra_findings: Mapped[list["InfraFinding"]] = relationship(back_populates="actor")
     style_profiles: Mapped[list["StyleProfile"]] = relationship(back_populates="actor")
     attribution_edges: Mapped[list["AttributionEdge"]] = relationship()
+    real_world_entities: Mapped[list["RealWorldEntity"]] = relationship(
+        back_populates="actor"
+    )
 
 
 class Identifier(Base):
@@ -68,8 +71,23 @@ class InfraFinding(Base):
     onion_address: Mapped[str] = mapped_column(String(255))
     finding_type: Mapped[str] = mapped_column(
         String(64)
-    )  # ssl_leak | banner | default_page | clock_skew
+    )  # ssl_leak | banner | default_page | clock_skew | descriptor_inconsistency
     detail: Mapped[dict] = mapped_column(JSON, default=dict)
+    # Deterministic, finding-type-level label (see
+    # app.services.infra_scan.scanner.SEVERITY_BY_FINDING_TYPE) — never a
+    # fabricated per-instance score. Nullable only because rows predating
+    # this column (existing synthetic-demo seed data) never set it; new rows
+    # from either the live scanner or the synthetic pipeline path always do.
+    severity: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # The AnalysisJob this finding came from, when the scan ran through
+    # Celery (see app.workers.tasks.run_infra_scan) — null for findings
+    # created by app.services.pipeline's synthetic demo path, which has no
+    # job of its own (see that module's comment on why). Lets an
+    # investigator trace a specific finding back to the exact scan run that
+    # produced it, per the PS's "scan/job ID" requirement.
+    scan_job_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("analysis_jobs.id"), nullable=True
+    )
     resolved_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
     discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
@@ -279,3 +297,60 @@ class AnalysisJob(Base):
     result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class RealWorldEntity(Base):
+    """A SUSPECTED real-world entity (organization, infrastructure/domain
+    owner, or breach-listed company) an actor's dark-web infrastructure or
+    external-intelligence correlation evidence points toward — see
+    app.services.entity_linkage for how each row here is derived.
+
+    Every row is DERIVED, deterministically, from data Argus already
+    independently holds — never a fabricated organization name or invented
+    ownership claim. Two derivation paths exist today:
+      - "cert_hostname": the actor's own InfraFinding.detail.subject_cn/san
+        (a real-world hostname literally read out of a leaked TLS
+        certificate) — this names a DOMAIN, not a verified owner; Argus has
+        not independently confirmed who controls it.
+      - "external_org_match": a CorrelationEvidence row already tying the
+        actor's infrastructure to a HIBP BreachRecord or MISP ThreatEvent
+        that itself carries a real, publicly-known organization/breach name.
+
+    Deliberately named entity_type/relationship_type/confidence as
+    qualitative, source-traceable labels rather than a fabricated float or a
+    "confirmed" claim — see this model's confidence column and
+    app.services.entity_linkage's module docstring for why. The UI must
+    label this "Suspected Real-World Entity," never "Confirmed Identity."
+
+    Rebuilt from scratch inside app.services.pipeline.run_full_analysis,
+    same pattern as CorrelationEvidence/AttributionEdge/ThreatActivity."""
+
+    __tablename__ = "real_world_entities"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    actor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("actors.id"), index=True
+    )
+    entity_name: Mapped[str] = mapped_column(String(512))
+    # domain | organization — never "person": see module docstring, this
+    # project never makes individual-identity claims.
+    entity_type: Mapped[str] = mapped_column(String(32))
+    # cert_hostname | external_org_match — see module docstring.
+    relationship_type: Mapped[str] = mapped_column(String(32))
+    evidence: Mapped[dict] = mapped_column(JSON, default=dict)
+    # infra_scan | hibp | misp_circl_osint | misp_botvrij_osint
+    source: Mapped[str] = mapped_column(String(64))
+    source_record_id: Mapped[str] = mapped_column(String(255))
+    observed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Qualitative only, e.g. "unverified_domain_reference" |
+    # "external_breach_directory_match" | "external_threat_event_match" —
+    # see module docstring. Never a fabricated float, and never fed into
+    # app.services.scoring's confidence formula (same architectural
+    # boundary CorrelationEvidence and ThreatActivity already hold to).
+    confidence: Mapped[str] = mapped_column(String(64))
+    explanation: Mapped[str] = mapped_column(String(512))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    actor: Mapped[Actor] = relationship(back_populates="real_world_entities")

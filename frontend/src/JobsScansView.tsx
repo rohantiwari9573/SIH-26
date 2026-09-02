@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import {
   AnalysisJobRecord,
   ApiError,
@@ -7,9 +7,10 @@ import {
   getSourceRegistry,
   getSystemStatus,
   listRecentJobs,
+  triggerInfraScan,
 } from "./api";
 import { SkeletonRows } from "./Skeleton";
-import { ActivityIcon, AlertIcon } from "./icons";
+import { ActivityIcon, AlertIcon, LoaderIcon, ServerIcon } from "./icons";
 
 const JOB_STATUS_COLOR: Record<string, string> = {
   success: "var(--high)",
@@ -37,10 +38,11 @@ function StatusDot({ healthy }: { healthy: boolean }) {
 // panels: (1) component health, checked at request time — never a static
 // "all green" placeholder; (2) source ingestion status, reusing the exact
 // same registry SourcesView reads; (3) recent analysis jobs, reading
-// app.models.actor.AnalysisJob — real rows persisted by the Celery
-// reanalyze_all task (see that model's docstring), not fabricated. CLI-
-// driven ingestion (scripts/ingest_*.py) does NOT appear here since it
-// bypasses Celery entirely — an honest scope, not a hidden gap.
+// app.models.actor.AnalysisJob — real rows persisted by every
+// Celery-triggered path (lead reanalysis, scheduled collection, infra
+// scans — see that model's docstring), not fabricated. CLI-driven ingestion
+// (scripts/ingest_*.py) does NOT appear here since it bypasses Celery
+// entirely — an honest scope, not a hidden gap.
 export default function JobsScansView() {
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [sources, setSources] = useState<DataSourceStatus[] | null>(null);
@@ -48,6 +50,31 @@ export default function JobsScansView() {
   const [jobsTotal, setJobsTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [retryToken, setRetryToken] = useState(0);
+
+  const [onionAddress, setOnionAddress] = useState("demo-onion-address.onion");
+  const [clearnetHost, setClearnetHost] = useState("");
+  const [scanBusy, setScanBusy] = useState(false);
+  const [scanMessage, setScanMessage] = useState<string | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
+
+  async function handleTriggerScan(e: FormEvent) {
+    e.preventDefault();
+    setScanError(null);
+    setScanMessage(null);
+    setScanBusy(true);
+    try {
+      const { task_id } = await triggerInfraScan({
+        onion_address: onionAddress,
+        clearnet_host: clearnetHost,
+      });
+      setScanMessage(`Scan queued (task ${task_id}). Refreshing job list shortly...`);
+      setTimeout(() => setRetryToken((t) => t + 1), 2000);
+    } catch (err) {
+      setScanError(err instanceof ApiError ? err.message : "Failed to trigger scan");
+    } finally {
+      setScanBusy(false);
+    }
+  }
 
   useEffect(() => {
     setError(null);
@@ -159,6 +186,60 @@ export default function JobsScansView() {
                   ))}
                 </tbody>
               </table>
+            )}
+          </div>
+
+          <div className="section-card" style={{ marginBottom: "1.5rem" }}>
+            <div className="section-heading">
+              <ServerIcon width={16} height={16} />
+              <h3>Trigger Infrastructure Scan</h3>
+            </div>
+            <p className="muted" style={{ marginBottom: "0.75rem" }}>
+              Runs the real SSL/banner/default-page/clock-skew/descriptor-inconsistency checks
+              (app.services.infra_scan) against a target and persists every finding. Only ever
+              point this at a self-hosted controlled target — see docs/ETHICS.md — such as the
+              team's own mock_leaky_service, never a real onion service.
+            </p>
+            <form
+              onSubmit={handleTriggerScan}
+              style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap", alignItems: "flex-end" }}
+            >
+              <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.8rem" }}>
+                Onion address (label only)
+                <input
+                  type="text"
+                  required
+                  value={onionAddress}
+                  onChange={(e) => setOnionAddress(e.target.value)}
+                  style={{ minWidth: 220 }}
+                />
+              </label>
+              <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.8rem" }}>
+                Controlled clearnet host
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. mock_target:443"
+                  value={clearnetHost}
+                  onChange={(e) => setClearnetHost(e.target.value)}
+                  style={{ minWidth: 220 }}
+                />
+              </label>
+              <button type="submit" className="btn-secondary" disabled={scanBusy}>
+                {scanBusy && <LoaderIcon width={15} height={15} />}
+                Run scan
+              </button>
+            </form>
+            {scanMessage && (
+              <p className="muted" style={{ marginTop: "0.6rem" }}>
+                {scanMessage}
+              </p>
+            )}
+            {scanError && (
+              <p className="error" style={{ marginTop: "0.6rem" }}>
+                <AlertIcon width={15} height={15} />
+                {scanError}
+              </p>
             )}
           </div>
 

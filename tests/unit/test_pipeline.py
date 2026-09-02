@@ -413,3 +413,70 @@ def test_advisory_lock_skipped_on_sqlite(monkeypatch):
     pipeline.run_full_analysis(db)
 
     assert db.execute.call_count == 0
+
+
+def test_rerun_preserves_live_scan_findings_but_unlinks_actor(tmp_path, monkeypatch):
+    """Regression test for a real bug found via live verification against
+    Postgres (SQLite, used here, does not enforce foreign keys, so it can't
+    reproduce the ForeignKeyViolation itself — this test instead pins down
+    the BEHAVIOR the fix must produce, which SQLite can verify):
+
+    A live infra scan (app.workers.tasks.run_infra_scan) persists
+    InfraFinding rows with scan_job_id set — real, durable evidence that
+    must survive run_full_analysis's "delete everything and rebuild from
+    scratch" pattern, unlike the synthetic per-persona findings the
+    pipeline creates itself (scan_job_id always None, which DO get rebuilt
+    each run). Actor rows are always fully recreated with new UUIDs each
+    run, so a live finding's OLD actor_id link must be nulled (not left
+    dangling, not fabricated forward to a new UUID) rather than blocking
+    the rebuild.
+    """
+    _mock_neo4j(monkeypatch)
+    db = _session(tmp_path)
+
+    actor = Actor(label="Actor: pre_existing", confidence_score=0.5)
+    db.add(actor)
+    db.flush()
+
+    live_finding = InfraFinding(
+        actor_id=actor.id,
+        onion_address="livecheck.onion",
+        finding_type="ssl_leak",
+        detail={"subject_cn": "mail.example.test"},
+        severity="high",
+        scan_job_id=None,  # set below once AnalysisJob exists
+    )
+    from app.models.actor import AnalysisJob
+
+    job = AnalysisJob(job_type="infra_scan", status="success", target="livecheck.onion")
+    db.add(job)
+    db.flush()
+    live_finding.scan_job_id = job.id
+    db.add(live_finding)
+
+    synthetic_finding = InfraFinding(
+        actor_id=actor.id,
+        onion_address="synthetic.onion",
+        finding_type="ssl_leak",
+        detail={"note": "matched via mock_leaky_service scan"},
+        severity="high",
+        scan_job_id=None,
+    )
+    db.add(synthetic_finding)
+    db.commit()
+
+    persona = RawPersona(username="vendor_e", platform="platform_1")
+    db.add(persona)
+    db.commit()
+
+    pipeline.run_full_analysis(db)
+
+    remaining = db.query(InfraFinding).all()
+    real = [f for f in remaining if f.onion_address == "livecheck.onion"]
+    synthetic = [f for f in remaining if f.onion_address == "synthetic.onion"]
+
+    assert len(real) == 1, "the real, scan-job-linked finding must survive the rebuild"
+    assert real[0].actor_id is None, "its stale actor link must be nulled, not left dangling"
+    assert real[0].detail["subject_cn"] == "mail.example.test"
+
+    assert synthetic == [], "the synthetic (scan_job_id=None) finding is correctly rebuilt away"

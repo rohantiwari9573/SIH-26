@@ -22,6 +22,7 @@ from app.models.actor import (
     InfraFinding,
     RawActivity,
     RawPersona,
+    RealWorldEntity,
     StyleProfile,
     ThreatActivity,
 )
@@ -32,8 +33,10 @@ from app.services.correlation import (
     correlate_misp_indicators,
     correlate_tor_relays,
 )
+from app.services.entity_linkage import derive_real_world_entities
 from app.services.graph.neo4j_client import get_neo4j_client
 from app.services.graph.relationship_mapper import ingest_marketplace_record
+from app.services.infra_scan.scanner import SEVERITY_BY_FINDING_TYPE
 from app.services.stylometry.features import extract_features
 from app.services.threat_categorization import classify_activity
 
@@ -120,16 +123,35 @@ def run_full_analysis(
     personas_by_key = {(p["username"], p["platform"]): p for p in personas}
 
     # Derived tables are rebuilt from scratch each run — see module docstring.
-    # CorrelationEvidence must go first: it FK-references infra_findings/
-    # actors with no DB-level cascade, so deleting those first would crash
-    # with a ForeignKeyViolation the moment any correlation match exists.
-    # It's regenerated a few lines down anyway (correlate_* runs again
-    # below), so dropping it here is consistent with every other derived
-    # table's "rebuilt fresh each run" behavior, not a data-loss risk.
+    # CorrelationEvidence and RealWorldEntity must go first: both
+    # FK-reference actors with no DB-level cascade, so deleting Actor first
+    # would crash with a ForeignKeyViolation the moment either has a row.
+    # Both are regenerated a few lines down anyway (correlate_*/
+    # derive_real_world_entities run again below), so dropping them here is
+    # consistent with every other derived table's "rebuilt fresh each run"
+    # behavior, not a data-loss risk.
     db.query(CorrelationEvidence).delete()
+    db.query(RealWorldEntity).delete()
     db.query(ThreatActivity).delete()
     db.query(StyleProfile).delete()
-    db.query(InfraFinding).delete()
+    # InfraFinding is NOT blanket-deleted: a row with scan_job_id set came
+    # from a real live scan (app.workers.tasks.run_infra_scan) and is
+    # durable evidence tied to an immutable AnalysisJob record — exactly
+    # like RawActivity, it must survive a pipeline rebuild, not get wiped
+    # the next time anyone submits a lead or the 6-hourly scheduled
+    # collection run fires. Only the synthetic per-persona findings this
+    # function itself creates below (scan_job_id always None) are rebuilt.
+    # A real finding's actor_id is unlinked (not deleted) first — Actor rows
+    # themselves ARE fully recreated with new UUIDs every run (below), so
+    # any old actor_id link is guaranteed stale immediately after; an
+    # investigator sees the finding as unlinked rather than it silently
+    # disappearing or blocking this rebuild with a ForeignKeyViolation.
+    db.query(InfraFinding).filter(InfraFinding.scan_job_id.isnot(None)).update(
+        {"actor_id": None}, synchronize_session=False
+    )
+    db.query(InfraFinding).filter(InfraFinding.scan_job_id.is_(None)).delete(
+        synchronize_session=False
+    )
     db.query(AttributionEdge).delete()
     db.query(Identifier).delete()
     db.query(Actor).delete()
@@ -202,6 +224,7 @@ def run_full_analysis(
                         onion_address=persona["onion_address"],
                         finding_type="ssl_leak",
                         detail={"note": "matched via mock_leaky_service scan"},
+                        severity=SEVERITY_BY_FINDING_TYPE["ssl_leak"],
                     )
                 )
 
@@ -275,6 +298,11 @@ def run_full_analysis(
     correlate_tor_relays(db)
     correlate_misp_indicators(db)
     correlate_hibp_breaches(db)
+
+    # Real-world entity attribution (see app.services.entity_linkage) — must
+    # run AFTER correlate_* above, since one of its two derivation paths
+    # reads the CorrelationEvidence rows those calls just (re)created.
+    derive_real_world_entities(db)
 
     db.commit()
     return persisted_actors

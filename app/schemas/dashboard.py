@@ -24,10 +24,18 @@ class DashboardStatsOut(BaseModel):
 
 
 class TimelineEventOut(BaseModel):
-    event_type: str  # actor_created | infra_finding | lead_submitted | attribution_edge
+    event_type: str  # actor_created | infra_finding | lead_submitted | threat_activity
     occurred_at: datetime
     summary: str
     actor_id: str | None = None
+    # Real source/platform this event was observed on, when the underlying
+    # row has one — None for actor_created (an Argus-internal derivation,
+    # not something observed on a platform). Lets the UI answer "which
+    # platforms were involved" per the PS's timeline-query requirement.
+    source: str | None = None
+    # Only meaningful for threat_activity events (see
+    # app.services.threat_categorization.CATEGORY_LABELS) — None otherwise.
+    category: str | None = None
 
 
 class InfraFindingRowOut(BaseModel):
@@ -115,6 +123,23 @@ class DataSourceStatusOut(BaseModel):
     record_count: int
     most_recent_at: datetime | None
     configured: bool = True
+    # scheduled | manual | not_applicable — "scheduled" only for the three
+    # sources app.workers.tasks.run_scheduled_collection actually re-pulls
+    # (see celery_app.py's beat_schedule); "manual" for a source ingested
+    # via a CLI script with no recurring trigger; "not_applicable" for a
+    # historical dataset that was never meant to be re-pulled.
+    collection_mode: str = "manual"
+    # ok | failed | never_run | None — this source's outcome in the MOST
+    # RECENT scheduled_collection AnalysisJob's per-source result (see
+    # run_scheduled_collection), or None for a source with no scheduled
+    # collection at all. Real, not inferred — a genuinely different state
+    # from "0 records" (a feed can be configured, scheduled, and still
+    # currently failing, e.g. the remote API changed shape).
+    last_run_status: str | None = None
+    # When the next scheduled_collection run is expected, computed from the
+    # most recent run's timestamp + settings.scheduled_collection_interval_hours
+    # — None for a source with no scheduled collection.
+    next_scheduled_at: datetime | None = None
 
 
 class HibpLookupOut(BaseModel):

@@ -28,10 +28,27 @@ class JobStatus(BaseModel):
     result: dict | None = None
 
 
+class InfraScanRequest(BaseModel):
+    """Triggers app.workers.tasks.run_infra_scan. clearnet_host MUST be a
+    controlled/self-hosted target (see docs/ETHICS.md — e.g.
+    mock_leaky_service) — never a real onion service or arbitrary clearnet
+    host. actor_id, if given, links every finding this scan produces to that
+    actor; omit it for an exploratory scan not yet tied to a known actor."""
+
+    onion_address: str = Field(min_length=1, max_length=255)
+    clearnet_host: str = Field(min_length=1, max_length=255)
+    port: int = Field(default=443, ge=1, le=65535)
+    actor_id: uuid.UUID | None = None
+
+
+class InfraScanTriggered(BaseModel):
+    task_id: str
+
+
 class AnalysisJobOut(BaseModel):
     """One real, persisted AnalysisJob row — see that model's docstring for
-    exactly which pipeline runs populate this (Celery-triggered reanalyze_all
-    only, not CLI scripts)."""
+    exactly which pipeline runs populate this (Celery-triggered tasks only,
+    not CLI scripts)."""
 
     model_config = ConfigDict(from_attributes=True)
 

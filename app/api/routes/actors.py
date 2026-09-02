@@ -131,6 +131,7 @@ def get_actor_profile(actor_id: uuid.UUID, db: Session = Depends(get_db)):
             selectinload(Actor.infra_findings),
             selectinload(Actor.style_profiles),
             selectinload(Actor.attribution_edges),
+            selectinload(Actor.real_world_entities),
         )
         .filter(Actor.id == actor_id)
         .first()

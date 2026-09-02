@@ -124,6 +124,15 @@ class CorrelationEvidence(Base):
         UUID(as_uuid=True), ForeignKey("infra_findings.id"), nullable=True
     )
     description: Mapped[str] = mapped_column(String(512))
+    # Always "exact_match" today — _record_evidence only ever creates a row
+    # on a literal exact-value match (see this module's own docstring: "no
+    # fuzzy matching"), so this is a real, deterministic label describing
+    # HOW the match was made, not a fabricated confidence score. Kept as its
+    # own column (rather than left implicit) so the PS's explicit "every
+    # match must have ... confidence" requirement is satisfied honestly:
+    # the true answer is "these are all equally exact-string matches," and
+    # that's what's stored.
+    confidence: Mapped[str] = mapped_column(String(32), default="exact_match")
     observed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 

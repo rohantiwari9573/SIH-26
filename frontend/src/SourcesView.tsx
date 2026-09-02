@@ -51,6 +51,18 @@ const SOURCE_PURPOSE: Record<string, string> = {
   evolution_forum: "Historical forum posts (Evolution Market dataset).",
 };
 
+const RUN_STATUS_LABELS: Record<NonNullable<DataSourceStatus["last_run_status"]>, string> = {
+  ok: "OK",
+  failed: "Failed",
+  never_run: "Never run",
+};
+
+const COLLECTION_MODE_LABELS: Record<DataSourceStatus["collection_mode"], string> = {
+  scheduled: "Autonomous (every 6h)",
+  manual: "Manual (CLI script)",
+  not_applicable: "Fixed snapshot",
+};
+
 function SourceTable({ sources, live }: { sources: DataSourceStatus[]; live: boolean }) {
   return (
     <table>
@@ -61,6 +73,7 @@ function SourceTable({ sources, live }: { sources: DataSourceStatus[]; live: boo
           <th>Records</th>
           <th>Last Sync</th>
           <th>Type</th>
+          <th>Collection</th>
           <th>Purpose</th>
         </tr>
       </thead>
@@ -80,6 +93,16 @@ function SourceTable({ sources, live }: { sources: DataSourceStatus[]; live: boo
                 : "—"}
             </td>
             <td>{CATEGORY_LABELS[s.category]}</td>
+            <td>
+              {COLLECTION_MODE_LABELS[s.collection_mode]}
+              {s.collection_mode === "scheduled" && (
+                <div className="muted" style={{ fontSize: "0.78rem" }}>
+                  {s.last_run_status && RUN_STATUS_LABELS[s.last_run_status]}
+                  {s.next_scheduled_at &&
+                    ` · next: ${new Date(s.next_scheduled_at).toLocaleString()}`}
+                </div>
+              )}
+            </td>
             <td className="muted">{SOURCE_PURPOSE[s.key] ?? "—"}</td>
           </tr>
         ))}

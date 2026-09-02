@@ -92,6 +92,40 @@ Jobs & Scans view as manually-triggered runs. Not enabled in local dev
 silently polling real external APIs on a fixed schedule just because
 `docker compose up` was run.
 
+## Live infrastructure scans and real-world entity linkage
+
+`POST /api/jobs/infra-scan` (`app/workers/tasks.py:run_infra_scan`) runs the
+five real detection checks in `app/services/infra_scan/scanner.py` (SSL cert
+reuse, banner, exposed default/status page, clock skew, and a genuine
+declared-vs-observed descriptor-inconsistency comparison) against a
+controlled/self-hosted target ONLY (see `docs/ETHICS.md`) and persists every
+finding to `InfraFinding` with this run's severity and `AnalysisJob` id
+(`scan_job_id`) — never just returned in the task response and forgotten.
+
+`app/services/entity_linkage.py` then derives `RealWorldEntity` rows —
+SIH PS-26151's "link to suspect real-world entities" ask — strictly from
+data Argus already independently holds: a real-world hostname read directly
+out of a leaked TLS certificate (`cert_hostname`), or an external HIBP/MISP
+record that already carries a real, publicly-known name and already matches
+the actor's infrastructure via `CorrelationEvidence`
+(`external_org_match`). Every row is labeled with a qualitative,
+never-fabricated confidence (`unverified_domain_reference`,
+`external_breach_directory_match`, `external_threat_event_match`) and must
+be shown in the UI as "Suspected Real-World Entity," never a confirmed
+identity.
+
+Derivation runs in two places, deliberately: once inside
+`run_infra_scan` itself (immediately, while a scan's actor linkage is still
+fresh) and once inside `run_full_analysis` (using whatever `CorrelationEvidence`
+that same rebuild just produced). This matters because `run_full_analysis`
+fully recreates every `Actor` row (new UUIDs) on every run, which means it
+must also NULL any live scan's stale `actor_id` link before it can safely
+delete the old `Actor` rows — waiting until then to derive entities would
+always see that link already gone. Real, durable `InfraFinding` rows
+(`scan_job_id` set) are never deleted by a pipeline rebuild the way the
+synthetic per-persona ones are — only unlinked, the same way `RawActivity`
+is never deleted so evidence never goes stale.
+
 ## Why a relational store AND a graph store
 
 Postgres holds the canonical actor/identifier/finding records — the stuff the

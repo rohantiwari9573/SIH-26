@@ -529,6 +529,7 @@ export default function ActorProfileView({
               <thead>
                 <tr>
                   <th>Type</th>
+                  <th>Severity</th>
                   <th>Onion address</th>
                   <th>Detail</th>
                 </tr>
@@ -537,8 +538,50 @@ export default function ActorProfileView({
                 {profile.infra_findings.map((finding) => (
                   <tr key={finding.id}>
                     <td>{finding.finding_type}</td>
+                    <td>{finding.severity ?? "—"}</td>
                     <td className="mono">{finding.onion_address}</td>
                     <td className="mono">{JSON.stringify(finding.detail)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </section>
+
+      <section>
+        <div className="section-card">
+          <div className="section-heading">
+            <GlobeIcon width={16} height={16} />
+            <h3>Suspected Real-World Entities</h3>
+            <span className="section-count">{profile.real_world_entities.length}</span>
+          </div>
+          <p className="muted" style={{ marginBottom: "0.75rem" }}>
+            Domains and organizations this actor's infrastructure or external-intelligence
+            evidence points toward — derived, never invented, and never a confirmed identity.
+            An investigator should independently verify before acting on any row below.
+          </p>
+          {profile.real_world_entities.length === 0 ? (
+            <p className="muted">No evidence available.</p>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Entity</th>
+                  <th>Type</th>
+                  <th>Confidence</th>
+                  <th>Source</th>
+                  <th>Explanation</th>
+                </tr>
+              </thead>
+              <tbody>
+                {profile.real_world_entities.map((entity) => (
+                  <tr key={entity.id}>
+                    <td className="mono">{entity.entity_name}</td>
+                    <td>{entity.entity_type}</td>
+                    <td>{entity.confidence.replace(/_/g, " ")}</td>
+                    <td>{entity.source}</td>
+                    <td className="muted">{entity.explanation}</td>
                   </tr>
                 ))}
               </tbody>
@@ -767,6 +810,7 @@ export default function ActorProfileView({
                   <th>Category</th>
                   <th>Source</th>
                   <th>Matched value</th>
+                  <th>Confidence</th>
                   <th>Description</th>
                   <th>Observed</th>
                 </tr>
@@ -779,6 +823,7 @@ export default function ActorProfileView({
                       {SOURCE_LABELS[e.source] ?? e.source} <Badge variant="live" />
                     </td>
                     <td className="mono">{e.matched_value}</td>
+                    <td>{e.confidence.replace(/_/g, " ")}</td>
                     <td className="muted">{e.description}</td>
                     <td>{e.observed_at ? new Date(e.observed_at).toLocaleDateString() : "—"}</td>
                   </tr>

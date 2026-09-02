@@ -22,6 +22,8 @@ class InfraFindingOut(BaseModel):
     onion_address: str
     finding_type: str
     detail: dict
+    severity: str | None
+    scan_job_id: uuid.UUID | None
     resolved_ip: str | None
     discovered_at: datetime
 
@@ -50,6 +52,28 @@ class AttributionEdgeOut(BaseModel):
     weight: float
 
 
+class RealWorldEntityOut(BaseModel):
+    """A SUSPECTED real-world entity this actor's infrastructure/correlation
+    evidence points toward — see app.services.entity_linkage. `confidence`
+    is always a qualitative, source-traceable label (never a fabricated
+    float), and the UI MUST label this "Suspected Real-World Entity," never
+    "Confirmed Identity" — see that module's docstring."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    entity_name: str
+    entity_type: str
+    relationship_type: str
+    evidence: dict
+    source: str
+    source_record_id: str
+    observed_at: datetime | None
+    confidence: str
+    explanation: str
+    created_at: datetime
+
+
 class ActorProfileOut(BaseModel):
     """The single unified view the PS asks for: identifiers + infra + confidence, together."""
 
@@ -64,6 +88,7 @@ class ActorProfileOut(BaseModel):
     infra_findings: list[InfraFindingOut] = []
     style_profiles: list[StyleProfileOut] = []
     attribution_edges: list[AttributionEdgeOut] = []
+    real_world_entities: list[RealWorldEntityOut] = []
 
 
 class GraphNode(BaseModel):
@@ -222,5 +247,6 @@ class CorrelationEvidenceOut(BaseModel):
     evidence_type: str
     matched_value: str
     description: str
+    confidence: str
     observed_at: datetime | None
     ingested_at: datetime

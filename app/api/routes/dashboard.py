@@ -3,7 +3,8 @@ Argus's own tables — no hardcoded/placeholder figures. Where a real trend or
 sparkline can't be honestly computed yet (not enough historical spread in
 the data), the field is omitted rather than filled with a fake value; see
 StatCard's docstring."""
-from datetime import datetime, timedelta, timezone
+import uuid
+from datetime import date, datetime, timedelta, timezone
 
 import redis
 from fastapi import APIRouter, Depends
@@ -15,6 +16,7 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.models.actor import (
     Actor,
+    AnalysisJob,
     AttributionEdge,
     Identifier,
     InfraFinding,
@@ -131,63 +133,153 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
 
 
 @router.get("/timeline", response_model=list[TimelineEventOut])
-def get_dashboard_timeline(limit: int = 20, db: Session = Depends(get_db)):
+def get_dashboard_timeline(
+    limit: int = 20,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    actor_id: uuid.UUID | None = None,
+    source: str | None = None,
+    category: str | None = None,
+    event_type: str | None = None,
+    db: Session = Depends(get_db),
+):
     """Real events only, unioned from tables that carry a genuine
-    observation timestamp — no synthetic activity feed."""
-    events: list[TimelineEventOut] = []
+    observation timestamp — no synthetic activity feed.
 
-    for actor in db.query(Actor).order_by(Actor.created_at.desc()).limit(limit).all():
-        events.append(
-            TimelineEventOut(
-                event_type="actor_created",
-                occurred_at=actor.created_at,
-                summary=f"Actor derived: {actor.label}",
-                actor_id=str(actor.id),
-            )
-        )
+    Real querying, not just display: start_date/end_date filter each
+    event's own observed timestamp (inclusive, end_date treated as
+    end-of-day), actor_id/source/event_type/category are applied as real
+    SQL WHERE clauses per underlying table before the union — this answers
+    the PS's "query the database across a chosen timeline" requirement
+    (what did this actor do between two dates, on which platforms, what
+    categories), not just render a fixed-size feed. All filters are
+    optional and combine with AND; omitting all of them reproduces the
+    previous unfiltered "most recent N" behavior.
 
-    finding_query = db.query(InfraFinding).order_by(InfraFinding.discovered_at.desc()).limit(limit)
-    for finding in finding_query.all():
-        events.append(
-            TimelineEventOut(
-                event_type="infra_finding",
-                occurred_at=finding.discovered_at,
-                summary=f"{finding.finding_type} on {finding.onion_address}",
-                actor_id=str(finding.actor_id) if finding.actor_id else None,
-            )
-        )
-
-    for lead in db.query(RawPersona).order_by(RawPersona.submitted_at.desc()).limit(limit).all():
-        events.append(
-            TimelineEventOut(
-                event_type="lead_submitted",
-                occurred_at=lead.submitted_at,
-                summary=f"Lead observed: {lead.username} on {lead.platform}",
-            )
-        )
-
-    # Real classified activity — see app.services.threat_categorization.
-    # observed_at can be null (source data with no parseable date); those
-    # rows are excluded from a *timestamped* timeline rather than shown with
-    # a fabricated "now".
-    activity_query = (
-        db.query(ThreatActivity)
-        .filter(ThreatActivity.observed_at.isnot(None))
-        .order_by(ThreatActivity.observed_at.desc())
-        .limit(limit)
+    `source` matches: a RawPersona/ThreatActivity's own platform value, or
+    the fixed string "infra_scan" for infra_finding events (those have no
+    per-row platform — see InfraFindingOut). `category` only ever matches
+    threat_activity events; combined with event_type=lead_submitted it
+    correctly yields zero rows rather than silently ignoring the filter.
+    """
+    start_dt = (
+        datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
+        if start_date
+        else None
     )
-    for activity in activity_query.all():
-        label = CATEGORY_LABELS.get(activity.category, activity.category)
-        events.append(
-            TimelineEventOut(
-                event_type="threat_activity",
-                occurred_at=activity.observed_at,
-                summary=(
-                    f"{label}: {activity.persona_username} on {activity.source_platform}"
-                ),
-                actor_id=str(activity.actor_id) if activity.actor_id else None,
+    end_dt = (
+        datetime.combine(end_date, datetime.min.time(), tzinfo=timezone.utc) + timedelta(days=1)
+        if end_date
+        else None
+    )
+
+    def _in_range(value: datetime) -> bool:
+        # SQLite (used in tests) does not preserve tzinfo on a
+        # DateTime(timezone=True) column round-trip — rows come back naive
+        # even though they were written tz-aware; Postgres (production)
+        # preserves it. Normalizing a naive read as UTC keeps this endpoint
+        # correct on both without special-casing the dialect.
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        if start_dt and value < start_dt:
+            return False
+        if end_dt and value >= end_dt:
+            return False
+        return True
+
+    events: list[TimelineEventOut] = []
+    include_types = {event_type} if event_type else None
+
+    if (
+        (include_types is None or "actor_created" in include_types)
+        and source is None
+        and category is None
+    ):
+        query = db.query(Actor)
+        if actor_id is not None:
+            query = query.filter(Actor.id == actor_id)
+        for actor in query.order_by(Actor.created_at.desc()).limit(limit).all():
+            if not _in_range(actor.created_at):
+                continue
+            events.append(
+                TimelineEventOut(
+                    event_type="actor_created",
+                    occurred_at=actor.created_at,
+                    summary=f"Actor derived: {actor.label}",
+                    actor_id=str(actor.id),
+                )
             )
-        )
+
+    if (
+        (include_types is None or "infra_finding" in include_types)
+        and category is None
+        and (source is None or source == "infra_scan")
+    ):
+        finding_query = db.query(InfraFinding)
+        if actor_id is not None:
+            finding_query = finding_query.filter(InfraFinding.actor_id == actor_id)
+        for finding in finding_query.order_by(InfraFinding.discovered_at.desc()).limit(limit).all():
+            if not _in_range(finding.discovered_at):
+                continue
+            events.append(
+                TimelineEventOut(
+                    event_type="infra_finding",
+                    occurred_at=finding.discovered_at,
+                    summary=f"{finding.finding_type} on {finding.onion_address}",
+                    actor_id=str(finding.actor_id) if finding.actor_id else None,
+                    source="infra_scan",
+                )
+            )
+
+    if (
+        (include_types is None or "lead_submitted" in include_types)
+        and category is None
+        and actor_id is None
+    ):
+        lead_query = db.query(RawPersona)
+        if source is not None:
+            lead_query = lead_query.filter(RawPersona.platform == source)
+        for lead in lead_query.order_by(RawPersona.submitted_at.desc()).limit(limit).all():
+            if not _in_range(lead.submitted_at):
+                continue
+            events.append(
+                TimelineEventOut(
+                    event_type="lead_submitted",
+                    occurred_at=lead.submitted_at,
+                    summary=f"Lead observed: {lead.username} on {lead.platform}",
+                    source=lead.platform,
+                )
+            )
+
+    if include_types is None or "threat_activity" in include_types:
+        # Real classified activity — see app.services.threat_categorization.
+        # observed_at can be null (source data with no parseable date);
+        # those rows are excluded from a *timestamped* timeline rather than
+        # shown with a fabricated "now".
+        activity_query = db.query(ThreatActivity).filter(ThreatActivity.observed_at.isnot(None))
+        if actor_id is not None:
+            activity_query = activity_query.filter(ThreatActivity.actor_id == actor_id)
+        if source is not None:
+            activity_query = activity_query.filter(ThreatActivity.source_platform == source)
+        if category is not None:
+            activity_query = activity_query.filter(ThreatActivity.category == category)
+        activity_query = activity_query.order_by(ThreatActivity.observed_at.desc()).limit(limit)
+        for activity in activity_query.all():
+            if not _in_range(activity.observed_at):
+                continue
+            label = CATEGORY_LABELS.get(activity.category, activity.category)
+            events.append(
+                TimelineEventOut(
+                    event_type="threat_activity",
+                    occurred_at=activity.observed_at,
+                    summary=(
+                        f"{label}: {activity.persona_username} on {activity.source_platform}"
+                    ),
+                    actor_id=str(activity.actor_id) if activity.actor_id else None,
+                    source=activity.source_platform,
+                    category=activity.category,
+                )
+            )
 
     events.sort(key=lambda e: e.occurred_at, reverse=True)
     return events[:limit]
@@ -374,6 +466,33 @@ def get_source_registry(db: Session = Depends(get_db)):
         "chainabuse": bool(settings.chainabuse_api_key),
     }
 
+    # Registry key -> the key run_scheduled_collection's own result dict
+    # uses for that feed (see app.workers.tasks.run_scheduled_collection) —
+    # one ingest_misp_osint() call covers both MISP registry rows, so they
+    # share a single "misp_osint" status rather than each getting their own
+    # (there is genuinely only one real run to report per feed call).
+    SCHEDULED_SOURCE_KEYS = {
+        "tor_onionoo": "onionoo",
+        "misp_circl_osint": "misp_osint",
+        "misp_botvrij_osint": "misp_osint",
+        "hibp": "hibp",
+    }
+
+    # Most recent scheduled_collection run (see celery_app.py's
+    # beat_schedule) — a single query, reused for every scheduled source
+    # below rather than one query per row.
+    latest_scheduled_job = (
+        db.query(AnalysisJob)
+        .filter(AnalysisJob.job_type == "scheduled_collection", AnalysisJob.status != "running")
+        .order_by(AnalysisJob.created_at.desc())
+        .first()
+    )
+    latest_run_at = None
+    per_source_status: dict[str, str] = {}
+    if latest_scheduled_job is not None:
+        latest_run_at = latest_scheduled_job.completed_at or latest_scheduled_job.created_at
+        per_source_status = (latest_scheduled_job.result or {}).get("sources", {})
+
     out = []
     for key, label, category, extra_filter, timestamp_col in sources:
         model = timestamp_col.class_
@@ -385,6 +504,28 @@ def get_source_registry(db: Session = Depends(get_db)):
         most_recent_at = (
             getattr(most_recent, timestamp_col.key, None) if most_recent else None
         )
+
+        scheduled_key = SCHEDULED_SOURCE_KEYS.get(key)
+        if scheduled_key is not None:
+            collection_mode = "scheduled"
+            if latest_run_at is None:
+                last_run_status = "never_run"
+                next_scheduled_at = None
+            else:
+                raw_status = per_source_status.get(scheduled_key)
+                last_run_status = "ok" if raw_status == "ok" else "failed" if raw_status else None
+                next_scheduled_at = latest_run_at + timedelta(
+                    hours=settings.scheduled_collection_interval_hours
+                )
+        elif category == "historical":
+            collection_mode = "not_applicable"
+            last_run_status = None
+            next_scheduled_at = None
+        else:
+            collection_mode = "manual"
+            last_run_status = None
+            next_scheduled_at = None
+
         out.append(
             DataSourceStatusOut(
                 key=key,
@@ -393,6 +534,9 @@ def get_source_registry(db: Session = Depends(get_db)):
                 record_count=count,
                 most_recent_at=most_recent_at,
                 configured=configured_flags.get(key, True),
+                collection_mode=collection_mode,
+                last_run_status=last_run_status,
+                next_scheduled_at=next_scheduled_at,
             )
         )
     return out

@@ -22,8 +22,27 @@ export interface InfraFindingOut {
   onion_address: string;
   finding_type: string;
   detail: Record<string, unknown>;
+  severity: string | null;
+  scan_job_id: string | null;
   resolved_ip: string | null;
   discovered_at: string;
+}
+
+// A SUSPECTED real-world entity — see app.services.entity_linkage. Always
+// render confidence/entity_name/explanation together; never present this as
+// a confirmed identity (see the backend model's docstring for why).
+export interface RealWorldEntityOut {
+  id: string;
+  entity_name: string;
+  entity_type: string;
+  relationship_type: string;
+  evidence: Record<string, unknown>;
+  source: string;
+  source_record_id: string;
+  observed_at: string | null;
+  confidence: string;
+  explanation: string;
+  created_at: string;
 }
 
 export interface StyleProfileOut {
@@ -53,6 +72,7 @@ export interface ActorProfile {
   infra_findings: InfraFindingOut[];
   style_profiles: StyleProfileOut[];
   attribution_edges: AttributionEdgeOut[];
+  real_world_entities: RealWorldEntityOut[];
 }
 
 class ApiError extends Error {
@@ -265,6 +285,7 @@ export interface CorrelationEvidence {
   evidence_type: "infrastructure" | "threat_indicator" | "breach_domain";
   matched_value: string;
   description: string;
+  confidence: string;
   observed_at: string | null;
   ingested_at: string;
 }
@@ -426,10 +447,29 @@ export interface PaginatedAnalysisJobs {
 }
 
 /** Real, persisted job history (app.models.actor.AnalysisJob) — populated
- * only for the Celery-triggered reanalyze_all path (POST /api/leads), not
- * CLI-driven ingestion. See that model's docstring. */
+ * for every Celery-triggered path (lead reanalysis, scheduled collection,
+ * infra scans), not CLI-driven ingestion. See that model's docstring. */
 export async function listRecentJobs(page = 1, pageSize = 20): Promise<PaginatedAnalysisJobs> {
   return request<PaginatedAnalysisJobs>(`/api/jobs?page=${page}&page_size=${pageSize}`);
+}
+
+export interface InfraScanRequest {
+  onion_address: string;
+  clearnet_host: string;
+  port?: number;
+  actor_id?: string;
+}
+
+/** Triggers app.workers.tasks.run_infra_scan — clearnet_host MUST be a
+ * controlled/self-hosted target (see docs/ETHICS.md), never a real onion
+ * service. Findings are persisted with this run's job id and (if given)
+ * actor linkage — poll the returned task_id via getJobStatus/waitForJob. */
+export async function triggerInfraScan(payload: InfraScanRequest): Promise<{ task_id: string }> {
+  return request<{ task_id: string }>("/api/jobs/infra-scan", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
 }
 
 /** Polls a job until it reaches a terminal state (SUCCESS/FAILURE) or the
@@ -470,6 +510,17 @@ export interface TimelineEvent {
   occurred_at: string;
   summary: string;
   actor_id: string | null;
+  source: string | null;
+  category: string | null;
+}
+
+export interface TimelineFilters {
+  startDate?: string; // YYYY-MM-DD
+  endDate?: string;
+  actorId?: string;
+  source?: string;
+  category?: string;
+  eventType?: string;
 }
 
 export interface SourceBreakdownItem {
@@ -530,8 +581,18 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   return request<DashboardStats>("/api/dashboard/stats");
 }
 
-export async function getDashboardTimeline(limit = 20): Promise<TimelineEvent[]> {
-  return request<TimelineEvent[]>(`/api/dashboard/timeline?limit=${limit}`);
+export async function getDashboardTimeline(
+  limit = 20,
+  filters: TimelineFilters = {}
+): Promise<TimelineEvent[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (filters.startDate) params.set("start_date", filters.startDate);
+  if (filters.endDate) params.set("end_date", filters.endDate);
+  if (filters.actorId) params.set("actor_id", filters.actorId);
+  if (filters.source) params.set("source", filters.source);
+  if (filters.category) params.set("category", filters.category);
+  if (filters.eventType) params.set("event_type", filters.eventType);
+  return request<TimelineEvent[]>(`/api/dashboard/timeline?${params.toString()}`);
 }
 
 export async function getSourceBreakdown(): Promise<SourceBreakdownItem[]> {
@@ -570,6 +631,9 @@ export interface DataSourceStatus {
   record_count: number;
   most_recent_at: string | null;
   configured: boolean;
+  collection_mode: "scheduled" | "manual" | "not_applicable";
+  last_run_status: "ok" | "failed" | "never_run" | null;
+  next_scheduled_at: string | null;
 }
 
 export async function getBreachRecords(limit = 50): Promise<BreachRecord[]> {

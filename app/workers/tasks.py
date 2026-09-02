@@ -1,11 +1,13 @@
 """Async analysis jobs. Analysis (stylometry over many samples, infra scans,
 graph traversal) shouldn't block the HTTP request — the API enqueues a job and
 returns a job id; the dashboard polls /api/jobs/{id} for status."""
+import uuid
 from datetime import datetime, timezone
 
 from app.core.config import settings
 from app.db.session import SessionLocal
-from app.models.actor import AnalysisJob
+from app.models.actor import AnalysisJob, InfraFinding
+from app.services.entity_linkage import derive_real_world_entities
 from app.services.infra_scan.scanner import scan_target
 from app.services.pipeline import run_full_analysis
 from app.services.stylometry.classifier import similarity_score
@@ -23,10 +25,95 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-@celery_app.task(name="tasks.run_infra_scan")
-def run_infra_scan(onion_address: str, clearnet_host: str | None = None) -> list[dict]:
-    findings = scan_target(onion_address, clearnet_host)
-    return [{"finding_type": f.finding_type, "detail": f.detail} for f in findings]
+@celery_app.task(name="tasks.run_infra_scan", bind=True)
+def run_infra_scan(
+    self,
+    onion_address: str,
+    clearnet_host: str | None = None,
+    port: int = 443,
+    actor_id: str | None = None,
+) -> dict:
+    """Runs the real infra-scan checks (app.services.infra_scan.scanner)
+    against a controlled/self-hosted target ONLY — see docs/ETHICS.md, this
+    must never be pointed at a real onion service — and PERSISTS every
+    finding to InfraFinding, not just returns them in the task result.
+
+    Previously this task computed real findings but never wrote them to the
+    database and was never called from any API route — the detection logic
+    was tested and correct, but completely disconnected from the rest of
+    the platform (no evidence stored, no actor linkage, nothing queryable).
+    This closes that gap: every finding gets this run's AnalysisJob id
+    (scan_job_id) and, when actor_id is given, is linked to that actor —
+    exactly the "is evidence stored / linked to an actor / has a scan ID"
+    chain the PS's infra-analysis capability requires.
+
+    Also re-derives real_world_entities (app.services.entity_linkage) right
+    here, immediately, using this scan's fresh actor linkage — NOT just
+    inside the next full pipeline rebuild (app.services.pipeline). That
+    matters: app.services.pipeline.run_full_analysis necessarily unlinks
+    every live-scan finding's actor_id before it can safely delete/rebuild
+    Actor rows (Actor UUIDs are fully regenerated every rebuild — see that
+    module's comment), so by the time IT calls derive_real_world_entities,
+    this scan's actor linkage would already be gone. Deriving here instead,
+    while the linkage is still fresh, is what actually lets a real
+    ssl_leak's certificate hostname (the one non-fabricated
+    real-world-entity signal only a live scan can produce — see
+    entity_linkage's module docstring) ever reach a RealWorldEntity row.
+    """
+    db = SessionLocal()
+    try:
+        target = (
+            f"{onion_address} via {clearnet_host}:{port}" if clearnet_host else onion_address
+        )
+        job = AnalysisJob(
+            job_type="infra_scan",
+            status="running",
+            target=target,
+            task_id=self.request.id,
+        )
+        db.add(job)
+        db.commit()
+
+        findings = scan_target(onion_address, clearnet_host, port=port)
+
+        actor_uuid = uuid.UUID(actor_id) if actor_id else None
+        for f in findings:
+            db.add(
+                InfraFinding(
+                    actor_id=actor_uuid,
+                    onion_address=onion_address,
+                    finding_type=f.finding_type,
+                    detail=f.detail,
+                    severity=f.severity,
+                    scan_job_id=job.id,
+                )
+            )
+        db.flush()
+        if actor_uuid is not None:
+            derive_real_world_entities(db)
+
+        result = {
+            "findings": [
+                {"finding_type": f.finding_type, "severity": f.severity, "detail": f.detail}
+                for f in findings
+            ],
+            "finding_count": len(findings),
+            "actor_id": actor_id,
+        }
+        job.status = "success"
+        job.result = result
+        job.completed_at = _now()
+        db.commit()
+        return result
+    except Exception as exc:
+        db.rollback()
+        job.status = "failure"
+        job.result = {"error": str(exc)[:500]}
+        job.completed_at = _now()
+        db.commit()
+        raise
+    finally:
+        db.close()
 
 
 @celery_app.task(name="tasks.run_stylometry_match")
