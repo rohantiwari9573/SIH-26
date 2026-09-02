@@ -13,6 +13,16 @@ category assigned.
 > pillar runs only against a self-hosted mock Tor hidden service the team controls.
 > See [docs/ETHICS.md](docs/ETHICS.md).
 
+## Live demo
+
+- **Dashboard**: https://argus-frontend-dun.vercel.app/
+- **API**: https://api.rohantiwari.me/docs
+
+Deployed on Vercel (frontend, auto-deploys on push to `master`) and AWS EC2
+(backend — FastAPI, Postgres, Neo4j, Redis, Celery worker + beat, behind
+Caddy/HTTPS). The sections below (Quickstart, `localhost:*`) are for running
+Argus on your own machine, not the deployed instance.
+
 ## Architecture
 
 Two SEPARATE analytical pipelines feed a unified actor-profile store, exposed
@@ -75,7 +85,7 @@ taxonomy described above.
 - **Tests**: pytest
 - **CI**: GitHub Actions (lint + test on every push)
 
-## Quickstart
+## Quickstart (local development)
 
 ```bash
 cp .env.example .env
