@@ -40,12 +40,10 @@ function StatCardTile({
     <div className="stat-tile">
       <div className="stat-tile-label">{label}</div>
       <div className="stat-tile-value">{value.toLocaleString()}</div>
-      {trendPct !== null ? (
+      {trendPct !== null && (
         <div className={`stat-tile-trend ${trendPct >= 0 ? "up" : "down"}`}>
           {trendPct >= 0 ? "↑" : "↓"} {Math.abs(trendPct).toFixed(1)}% vs last 7 days
         </div>
-      ) : (
-        <div className="stat-tile-trend muted">not enough history yet</div>
       )}
     </div>
   );
