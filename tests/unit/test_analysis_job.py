@@ -60,26 +60,53 @@ def test_reanalyze_all_persists_failure_job_and_reraises(tmp_path, monkeypatch):
     assert job.completed_at is not None
 
 
+def _patch_all_scheduled_sources_ok(monkeypatch, *, except_source: str | None = None, boom=None):
+    """Patches all five scheduled_collection sources to no-op success,
+    except optionally one replaced with `boom` (a callable that raises)."""
+    defaults = {
+        "ingest_onionoo": lambda limit: None,
+        "ingest_misp_osint": lambda limit, indicator_limit: None,
+        "ingest_hibp": lambda limit: None,
+        "collect_evolution": lambda max_personas: None,
+        "collect_darkforums": lambda: None,
+    }
+    source_to_attr = {
+        "onionoo": "ingest_onionoo",
+        "misp_osint": "ingest_misp_osint",
+        "hibp": "ingest_hibp",
+        "evolution": "collect_evolution",
+        "darkforums": "collect_darkforums",
+    }
+    for attr, fn in defaults.items():
+        monkeypatch.setattr(tasks, attr, fn)
+    if except_source is not None:
+        monkeypatch.setattr(tasks, source_to_attr[except_source], boom)
+
+
 def test_scheduled_collection_persists_success_job_with_per_source_status(
     tmp_path, monkeypatch
 ):
-    """One feed (misp_osint) fails, the other two succeed — the run as a
+    """One source (misp_osint) fails, the other four succeed — the run as a
     whole must still succeed and record run_full_analysis's result, with the
     per-source outcome visible rather than swallowed."""
     SessionLocal = _session_factory(tmp_path)
     monkeypatch.setattr(tasks, "SessionLocal", SessionLocal)
     monkeypatch.setattr(tasks, "run_full_analysis", lambda db: [])
-    monkeypatch.setattr(tasks, "ingest_onionoo", lambda limit: None)
-    monkeypatch.setattr(tasks, "ingest_hibp", lambda limit: None)
 
     def _boom(limit, indicator_limit):
         raise RuntimeError("feed unreachable")
 
-    monkeypatch.setattr(tasks, "ingest_misp_osint", _boom)
+    _patch_all_scheduled_sources_ok(monkeypatch, except_source="misp_osint", boom=_boom)
 
     result = tasks.run_scheduled_collection.apply()
     assert result.result == {
-        "sources": {"onionoo": "ok", "misp_osint": "failed: feed unreachable", "hibp": "ok"},
+        "sources": {
+            "onionoo": "ok",
+            "misp_osint": "failed: feed unreachable",
+            "hibp": "ok",
+            "evolution": "ok",
+            "darkforums": "ok",
+        },
         "actor_count": 0,
     }
 
@@ -91,6 +118,36 @@ def test_scheduled_collection_persists_success_job_with_per_source_status(
     assert job.status == "success"
     assert job.result["sources"]["misp_osint"].startswith("failed:")
     assert job.result["sources"]["onionoo"] == "ok"
+    assert job.result["sources"]["evolution"] == "ok"
+    assert job.result["sources"]["darkforums"] == "ok"
+
+
+def test_scheduled_collection_tolerates_missing_dataset_file_as_systemexit(
+    tmp_path, monkeypatch
+):
+    """collect_evolution/collect_darkforums raise SystemExit (not Exception)
+    when their required dataset file isn't present on a given deployment —
+    a real, expected state (see docs/ETHICS.md: those files are large and
+    not committed to the repo), not a bug. Must be caught per-source like
+    any other failure, not propagate and crash the whole run."""
+    SessionLocal = _session_factory(tmp_path)
+    monkeypatch.setattr(tasks, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(tasks, "run_full_analysis", lambda db: [])
+
+    def _missing_file():
+        raise SystemExit("data/external/darkforums_safe_corpus.json not found")
+
+    _patch_all_scheduled_sources_ok(monkeypatch, except_source="darkforums", boom=_missing_file)
+
+    result = tasks.run_scheduled_collection.apply()
+    assert result.result["sources"]["darkforums"].startswith("failed:")
+    assert "not found" in result.result["sources"]["darkforums"]
+    assert result.result["sources"]["evolution"] == "ok"
+
+    db = SessionLocal()
+    job = db.query(AnalysisJob).one()
+    db.close()
+    assert job.status == "success"
 
 
 def test_scheduled_collection_persists_failure_job_when_pipeline_itself_fails(
@@ -98,9 +155,7 @@ def test_scheduled_collection_persists_failure_job_when_pipeline_itself_fails(
 ):
     SessionLocal = _session_factory(tmp_path)
     monkeypatch.setattr(tasks, "SessionLocal", SessionLocal)
-    monkeypatch.setattr(tasks, "ingest_onionoo", lambda limit: None)
-    monkeypatch.setattr(tasks, "ingest_misp_osint", lambda limit, indicator_limit: None)
-    monkeypatch.setattr(tasks, "ingest_hibp", lambda limit: None)
+    _patch_all_scheduled_sources_ok(monkeypatch)
 
     def _boom(db):
         raise RuntimeError("simulated pipeline failure")

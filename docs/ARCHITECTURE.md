@@ -80,17 +80,33 @@ matches how a real production system would need to behave.
 `app/workers/tasks.py:run_scheduled_collection`, fired on a fixed interval
 by `celery -A app.workers.celery_app beat` (see `celery_app.py`'s
 `beat_schedule`, and the `beat` service in `docker-compose.prod.yml`),
-re-pulls the live public feeds Argus already knows how to ingest — Tor
-Onionoo, MISP OSINT, HIBP breach directory (the same `main()`s the manual
-`scripts/ingest_*.py` commands call) — then re-runs `run_full_analysis` so
-fresh correlation evidence surfaces without anyone manually re-triggering
-it. Each feed is independent and best-effort; one being unreachable doesn't
-stop the others or block the pipeline re-run. Every run leaves a real
-`AnalysisJob` row (`job_type="scheduled_collection"`), visible in the same
-Jobs & Scans view as manually-triggered runs. Not enabled in local dev
-(`docker-compose.yml` has no `beat` service) — a dev's machine shouldn't be
-silently polling real external APIs on a fixed schedule just because
-`docker compose up` was run.
+re-pulls every source category the PS names: the three live public feeds
+(Tor Onionoo, MISP OSINT, HIBP breach directory — the same `main()`s the
+manual `scripts/ingest_*.py` commands call) AND the two real marketplace/
+forum datasets (Evolution Market, DarkForums — via `collect()`, not
+`main()`, on those two scripts; see the import comment in `tasks.py` for
+why) — then runs `run_full_analysis` ONCE at the end so fresh correlation
+AND attribution reflect whatever's new, without anyone manually
+re-triggering it.
+
+The marketplace/forum half is a static academic-archive snapshot, not a
+live scrape (`docs/ETHICS.md` — this project never touches real dark-web
+infrastructure), so re-collecting it every 6 hours is normally an idempotent
+no-op; the honest value is that it's wired into the same autonomous loop as
+everything else, so a future file replacement/extension gets picked up
+automatically rather than requiring a person to remember to re-run a script.
+
+Every source is independent and best-effort (including tolerating
+`SystemExit`, not just `Exception` — what `collect_evolution`/
+`collect_darkforums` raise when their required dataset file isn't present
+on a given deployment); one failing doesn't stop the others or block the
+single pipeline re-run. Every run leaves a real `AnalysisJob` row
+(`job_type="scheduled_collection"`) with a per-source status dict, visible
+in the same Jobs & Scans view as manually-triggered runs, and reflected in
+`GET /api/dashboard/source-registry`'s `collection_mode`/`last_run_status`/
+`next_scheduled_at` fields. Not enabled in local dev (`docker-compose.yml`
+has no `beat` service) — a dev's machine shouldn't be silently doing this
+on a fixed schedule just because `docker compose up` was run.
 
 ## Live infrastructure scans and real-world entity linkage
 

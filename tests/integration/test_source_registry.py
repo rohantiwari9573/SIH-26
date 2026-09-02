@@ -63,9 +63,16 @@ def test_no_scheduled_run_yet_reports_never_run(client):
     assert onionoo["last_run_status"] == "never_run"
     assert onionoo["next_scheduled_at"] is None
 
+    # darkforums/evolution are "historical" category (fixed academic-archive
+    # snapshots) but ARE re-collected on the scheduled loop now — see
+    # app.workers.tasks.run_scheduled_collection's module comment on why
+    # collection_mode is tracked separately from category.
     darkforums = _by_key(rows, "darkforums")
-    assert darkforums["collection_mode"] == "not_applicable"
-    assert darkforums["last_run_status"] is None
+    assert darkforums["collection_mode"] == "scheduled"
+    assert darkforums["last_run_status"] == "never_run"
+
+    evolution_market = _by_key(rows, "evolution_market")
+    assert evolution_market["collection_mode"] == "scheduled"
 
 
 def test_scheduled_run_reports_per_source_status_and_next_run(client):
@@ -84,6 +91,8 @@ def test_scheduled_run_reports_per_source_status_and_next_run(client):
                     "onionoo": "ok",
                     "misp_osint": "failed: feed unreachable",
                     "hibp": "ok",
+                    "evolution": "ok",
+                    "darkforums": "failed: data/external/darkforums_safe_corpus.json not found",
                 },
                 "actor_count": 0,
             },
@@ -121,6 +130,14 @@ def test_scheduled_run_reports_per_source_status_and_next_run(client):
     urlhaus = _by_key(rows, "urlhaus")
     assert urlhaus["collection_mode"] == "manual"
     assert urlhaus["last_run_status"] is None
+
+    evolution_market = _by_key(rows, "evolution_market")
+    evolution_forum = _by_key(rows, "evolution_forum")
+    assert evolution_market["last_run_status"] == "ok"
+    assert evolution_forum["last_run_status"] == "ok"
+
+    darkforums = _by_key(rows, "darkforums")
+    assert darkforums["last_run_status"] == "failed"
 
 
 def test_running_job_is_ignored_as_not_yet_a_real_result(client):

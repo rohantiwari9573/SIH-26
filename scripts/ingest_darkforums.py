@@ -47,7 +47,11 @@ def _parse_post_date(value: str) -> datetime | None:
     return None
 
 
-def main() -> None:
+def collect() -> None:
+    """Upserts RawPersona/RawActivity rows only — does NOT re-run
+    attribution. Split out from main() so
+    app.workers.tasks.run_scheduled_collection can call this alone and
+    defer the full pipeline rebuild to its own single end-of-run call."""
     if not CORPUS_PATH.exists():
         raise SystemExit(
             f"{CORPUS_PATH} not found — download safe_corpus.json from "
@@ -141,6 +145,9 @@ def main() -> None:
     finally:
         db.close()
 
+
+def main() -> None:
+    collect()
     db = SessionLocal()
     try:
         actors = run_full_analysis(db)

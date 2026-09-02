@@ -467,15 +467,25 @@ def get_source_registry(db: Session = Depends(get_db)):
     }
 
     # Registry key -> the key run_scheduled_collection's own result dict
-    # uses for that feed (see app.workers.tasks.run_scheduled_collection) —
-    # one ingest_misp_osint() call covers both MISP registry rows, so they
-    # share a single "misp_osint" status rather than each getting their own
-    # (there is genuinely only one real run to report per feed call).
+    # uses for that source (see app.workers.tasks.run_scheduled_collection)
+    # — one ingest_misp_osint()/collect_evolution() call covers two registry
+    # rows each, so those share a single status rather than each getting its
+    # own (there is genuinely only one real run to report per call).
+    # evolution_market/evolution_forum/darkforums are "historical" in
+    # `category` (each row is a fixed academic-archive snapshot, not a live
+    # feed — see docs/ETHICS.md) but ARE re-collected on the same 6-hourly
+    # schedule as the live feeds, idempotently, so a future file
+    # replacement/extension is picked up automatically. Both things are
+    # true at once, which is exactly why collection_mode is tracked
+    # separately from category rather than inferred from it.
     SCHEDULED_SOURCE_KEYS = {
         "tor_onionoo": "onionoo",
         "misp_circl_osint": "misp_osint",
         "misp_botvrij_osint": "misp_osint",
         "hibp": "hibp",
+        "evolution_market": "evolution",
+        "evolution_forum": "evolution",
+        "darkforums": "darkforums",
     }
 
     # Most recent scheduled_collection run (see celery_app.py's

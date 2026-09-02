@@ -13,6 +13,20 @@ from app.services.pipeline import run_full_analysis
 from app.services.stylometry.classifier import similarity_score
 from app.workers.celery_app import celery_app
 
+# collect() (not main()) for these two — they upsert RawPersona/RawActivity
+# only, deliberately skipping their own internal run_full_analysis call, so
+# run_scheduled_collection's single end-of-run call covers all five sources
+# in one pipeline rebuild instead of five redundant ones. Both files are
+# large, real datasets (see docs/ETHICS.md — Evolution Market cryptomarket
+# data, DarkForums leak-forum posts, both from public academic archives, not
+# live-scraped) and are static local snapshots, not a live feed: re-running
+# this every 6 hours is an idempotent no-op unless the underlying file is
+# ever replaced/extended, which is the honest, safe reading of "continuous
+# marketplace/forum collection" this project can support without violating
+# its own ethics policy (never touch real live dark-web infrastructure).
+from scripts.ingest_darkforums import collect as collect_darkforums
+from scripts.ingest_evolution import collect as collect_evolution
+
 # Reuses the exact same importable main()s the manual CLI commands call
 # (python scripts/ingest_onionoo.py etc.) — one implementation of "how to
 # pull this feed," not a second copy for the scheduled path that could drift.
@@ -178,41 +192,59 @@ def run_scheduled_collection(self) -> dict:
     beat_schedule) — the autonomous half of SIH PS-26151's "continuously
     gather footprints from reliable available sources": re-pulls the live
     public feeds Argus already knows how to ingest (Tor Onionoo relay list,
-    MISP OSINT event/indicator feeds, HIBP breach directory), then re-runs
-    the full pipeline so correlation reflects whatever's new — with no human
-    having to trigger any of it.
+    MISP OSINT event/indicator feeds, HIBP breach directory), re-checks the
+    two real marketplace/forum datasets (Evolution Market, DarkForums —
+    static academic-archive snapshots, re-collected idempotently rather than
+    live-scraped, per docs/ETHICS.md), then re-runs the full pipeline once
+    so correlation AND attribution reflect whatever's new across all five
+    source categories the PS names — with no human having to trigger any of
+    it.
 
-    Each feed is best-effort and independent (mirrors
-    scripts/ingest_misp_osint.py's own per-feed error handling): one feed
-    being unreachable (network blip, feed reorganized) must not stop the
-    others from ingesting, or block the pipeline re-run that follows using
-    whatever data did land."""
+    Each source is best-effort and independent (mirrors
+    scripts/ingest_misp_osint.py's own per-feed error handling): one source
+    failing (network blip, feed reorganized, a dataset file not present on
+    this deployment) must not stop the others from ingesting, or block the
+    single pipeline re-run that follows using whatever data did land."""
     db = SessionLocal()
     try:
         job = AnalysisJob(
             job_type="scheduled_collection",
             status="running",
-            target="onionoo + misp_osint + hibp -> full pipeline reanalysis",
+            target=(
+                "onionoo + misp_osint + hibp + evolution + darkforums "
+                "-> full pipeline reanalysis"
+            ),
             task_id=self.request.id,
         )
         db.add(job)
         db.commit()
 
-        # Each ingest script opens/commits/closes its own SessionLocal
-        # internally (see scripts/ingest_*.py) — independent of `db` above,
-        # which is only used for this job's own bookkeeping and the
-        # pipeline re-run, so a failure in one doesn't touch the others'
-        # already-committed work.
+        # Each ingest script/collect() opens/commits/closes its own
+        # SessionLocal internally (see scripts/ingest_*.py) — independent of
+        # `db` above, which is only used for this job's own bookkeeping and
+        # the single pipeline re-run at the end, so a failure in one source
+        # doesn't touch the others' already-committed work. evolution/
+        # darkforums use collect() specifically (not main()) so they don't
+        # each trigger their own extra full pipeline rebuild — see the
+        # import comment above.
         source_status: dict[str, str] = {}
         for source, run in (
             ("onionoo", lambda: ingest_onionoo(100)),
             ("misp_osint", lambda: ingest_misp_osint(200, settings.misp_max_events)),
             ("hibp", lambda: ingest_hibp(500)),
+            ("evolution", lambda: collect_evolution(150)),
+            ("darkforums", collect_darkforums),
         ):
             try:
                 run()
                 source_status[source] = "ok"
-            except Exception as exc:
+            except (Exception, SystemExit) as exc:
+                # SystemExit (not Exception) is what collect_evolution/
+                # collect_darkforums raise when their required dataset file
+                # isn't present on this deployment (see those scripts'
+                # docstrings) — a real, expected "not configured here" state
+                # on some deployments, not a bug, and must not skip this
+                # except clause the way a bare `except Exception` would.
                 source_status[source] = f"failed: {str(exc)[:200]}"
 
         actors = run_full_analysis(db)

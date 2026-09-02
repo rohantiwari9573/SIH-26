@@ -142,7 +142,12 @@ def _upsert_raw_activities(db, raw_persona_id, platform: str, activities: list[d
     return count
 
 
-def main(max_personas: int) -> None:
+def collect(max_personas: int) -> None:
+    """Upserts RawPersona/RawActivity rows only — does NOT re-run attribution.
+    Split out from main() so app.workers.tasks.run_scheduled_collection can
+    call this alone and defer the (expensive, O(n^2) over stylometry
+    samples) full pipeline rebuild to its own single end-of-run call,
+    instead of every source triggering its own redundant rebuild."""
     if not (DATA_DIR / "vendors.tsv").exists() or not (DATA_DIR / "user.tsv").exists():
         raise SystemExit(
             f"{DATA_DIR}/vendors.tsv and/or user.tsv not found — these are 123MB/27MB and "
@@ -324,6 +329,9 @@ def main(max_personas: int) -> None:
     finally:
         db.close()
 
+
+def main(max_personas: int) -> None:
+    collect(max_personas)
     db = SessionLocal()
     try:
         actors = run_full_analysis(db)
