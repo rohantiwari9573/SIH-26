@@ -3,14 +3,27 @@ import { ActorSearchResult, listActors } from "./api";
 import ConfidenceBadge from "./ConfidenceBadge";
 import { SkeletonRows } from "./Skeleton";
 
+const PAGE_SIZE = 100;
+
 export default function AttributionView({ onSelectActor }: { onSelectActor: (id: string) => void }) {
   const [actors, setActors] = useState<ActorSearchResult[] | null>(null);
+  const [total, setTotal] = useState<number | null>(null);
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
-    listActors()
-      .then((r) => setActors(r.items))
-      .catch(() => setActors([]));
-  }, []);
+    setActors(null);
+    listActors(page, PAGE_SIZE)
+      .then((r) => {
+        setActors(r.items);
+        setTotal(r.total);
+      })
+      .catch(() => {
+        setActors([]);
+        setTotal(0);
+      });
+  }, [page]);
+
+  const totalPages = total !== null ? Math.max(1, Math.ceil(total / PAGE_SIZE)) : 1;
 
   return (
     <div>
@@ -20,6 +33,9 @@ export default function AttributionView({ onSelectActor }: { onSelectActor: (id:
           Every actor below is a real cluster derived by the attribution pipeline (shared
           wallet/PGP key + stylometric similarity + infrastructure leaks, weighted). Open an
           actor to see the specific evidence behind its confidence score.
+          {total !== null && total > PAGE_SIZE && (
+            <> Showing page {page} of {totalPages} ({total.toLocaleString()} actors total).</>
+          )}
         </p>
       </div>
       <div className="section-card">
@@ -38,6 +54,30 @@ export default function AttributionView({ onSelectActor }: { onSelectActor: (id:
           </ul>
         )}
       </div>
+
+      {actors !== null && totalPages > 1 && (
+        <div className="pager" role="navigation" aria-label="Actor list pages">
+          <button
+            className="btn-ghost"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            aria-label="Previous page"
+          >
+            Previous
+          </button>
+          <span className="muted" style={{ fontSize: "0.85rem" }}>
+            Page {page} of {totalPages}
+          </span>
+          <button
+            className="btn-ghost"
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page >= totalPages}
+            aria-label="Next page"
+          >
+            Next
+          </button>
+        </div>
+      )}
     </div>
   );
 }

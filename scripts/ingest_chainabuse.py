@@ -58,8 +58,12 @@ def main(limit: int) -> None:
     )
     resp.raise_for_status()
     payload = resp.json()
-    # See module docstring — this key/shape is best-effort from docs, not verified live.
-    reports = payload.get("data", payload if isinstance(payload, list) else [])[:limit]
+    # See module docstring — this key/shape is best-effort from docs, not
+    # verified live. If the API ever returns a bare top-level list, calling
+    # .get() on it would crash — check the list case FIRST, not as a
+    # fallback argument to .get() (which still evaluates .get() against a
+    # list and raises AttributeError before the fallback is ever used).
+    reports = (payload if isinstance(payload, list) else payload.get("data", []))[:limit]
 
     db = SessionLocal()
     try:

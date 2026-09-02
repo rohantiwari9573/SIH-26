@@ -7,6 +7,7 @@ email. If HIBP_API_KEY is ever set, this starts working with no other
 code changes needed.
 """
 from dataclasses import dataclass
+from urllib.parse import quote
 
 import httpx
 
@@ -29,7 +30,12 @@ def check_email_breaches(email: str) -> HibpLookupResult:
 
     try:
         resp = httpx.get(
-            BREACHED_ACCOUNT_URL.format(email=email),
+            # quote(safe="") — an email can legitimately contain characters
+            # (#, ?, %, unencoded non-ASCII) that are meaningful in a URL
+            # path; splicing it in raw would silently query the wrong
+            # address or produce a malformed request instead of checking
+            # the literal address the caller submitted.
+            BREACHED_ACCOUNT_URL.format(email=quote(email, safe="")),
             headers={"hibp-api-key": settings.hibp_api_key, "User-Agent": "Argus-Research"},
             params={"truncateResponse": "true"},
             timeout=15,

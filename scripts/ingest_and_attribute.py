@@ -25,19 +25,33 @@ def main() -> None:
 
     db = SessionLocal()
     try:
-        db.query(RawPersona).delete()
+        # Upsert by (username, platform) — the same idempotent pattern every
+        # other ingestion path in this codebase uses (leads.py,
+        # ingest_evolution.py, ingest_darkforums.py, seed_showcase_actor.py).
+        # This USED to be `db.query(RawPersona).delete()`, unconditionally
+        # wiping every RawPersona row in the database — every real
+        # submitted lead, every Evolution Market/DarkForums persona,
+        # anything else in the table — before loading this file's 7 demo
+        # personas. That's real, silent data loss on any database this
+        # script is run against that isn't empty; upserting only touches
+        # the rows this script itself manages.
         for persona in personas:
-            db.add(
-                RawPersona(
-                    username=persona["username"],
-                    platform=persona["platform"],
-                    sample_text=persona.get("sample_text"),
-                    wallet=persona.get("wallet"),
-                    pgp_key=persona.get("pgp_key"),
-                    onion_address=persona.get("onion_address"),
-                    vouched_by=persona.get("vouched_by", []),
+            lead = (
+                db.query(RawPersona)
+                .filter(
+                    RawPersona.username == persona["username"],
+                    RawPersona.platform == persona["platform"],
                 )
+                .first()
             )
+            if lead is None:
+                lead = RawPersona(username=persona["username"], platform=persona["platform"])
+                db.add(lead)
+            lead.sample_text = persona.get("sample_text")
+            lead.wallet = persona.get("wallet")
+            lead.pgp_key = persona.get("pgp_key")
+            lead.onion_address = persona.get("onion_address")
+            lead.vouched_by = persona.get("vouched_by", [])
         db.commit()
 
         actors = run_full_analysis(db, wallet_transactions=wallet_transactions)

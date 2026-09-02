@@ -123,6 +123,15 @@ class Neo4jClient:
         identifier node too (e.g. filtering to just "Indicators" on an actor
         with no correlation evidence returns an empty graph) — that's honest
         investigator behavior, not a bug."""
+        # elementId(n) identifies the EXACT node instances node_query already
+        # selected, not just their value string — edge_query below matches
+        # edges between those specific nodes by id, not by re-matching on
+        # value alone. This matters because a username node's real identity
+        # includes its source_platform (see upsert_identifier/
+        # link_identifiers's own comments): two different platforms can
+        # coincidentally share the same literal username string as two
+        # different real people, and a value-only edge match would wrongly
+        # attribute an edge between those two unrelated nodes.
         node_query = f"""
         UNWIND $values AS v
         MATCH (start:Identifier {{value: v}})
@@ -133,30 +142,30 @@ class Neo4jClient:
         WHERE n IS NOT NULL
           AND ($entity_types IS NULL OR n.type IN $entity_types)
           AND ($source IS NULL OR n.source_platform = $source)
-        RETURN n.type AS type, n.value AS value, n.source_platform AS source_platform
+        RETURN n.type AS type, n.value AS value, n.source_platform AS source_platform,
+               elementId(n) AS node_id
         """
         edge_query = """
-        UNWIND $values AS v
-        MATCH (a:Identifier {value: v})-[r:LINKED_TO]->(b:Identifier)
-        WHERE b.value IN $node_values
+        MATCH (a:Identifier)-[r:LINKED_TO]->(b:Identifier)
+        WHERE elementId(a) IN $node_ids AND elementId(b) IN $node_ids
           AND ($relationship_types IS NULL OR r.relationship IN $relationship_types)
         RETURN DISTINCT a.value AS source, b.value AS target,
                r.relationship AS relationship, r.weight AS weight
         """
         with self._driver.session() as session:
-            nodes = [
+            raw_nodes = [
                 dict(record)
                 for record in session.run(
                     node_query, values=values, entity_types=entity_types, source=source
                 )
             ]
-            node_values = [n["value"] for n in nodes]
+            node_ids = [n["node_id"] for n in raw_nodes]
+            nodes = [{k: v for k, v in n.items() if k != "node_id"} for n in raw_nodes]
             edges = [
                 dict(record)
                 for record in session.run(
                     edge_query,
-                    values=node_values,
-                    node_values=node_values,
+                    node_ids=node_ids,
                     relationship_types=relationship_types,
                 )
             ]
