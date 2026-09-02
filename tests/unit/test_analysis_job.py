@@ -56,3 +56,62 @@ def test_reanalyze_all_persists_failure_job_and_reraises(tmp_path, monkeypatch):
     assert job.status == "failure"
     assert "simulated pipeline failure" in job.result["error"]
     assert job.completed_at is not None
+
+
+def test_scheduled_collection_persists_success_job_with_per_source_status(
+    tmp_path, monkeypatch
+):
+    """One feed (misp_osint) fails, the other two succeed — the run as a
+    whole must still succeed and record run_full_analysis's result, with the
+    per-source outcome visible rather than swallowed."""
+    SessionLocal = _session_factory(tmp_path)
+    monkeypatch.setattr(tasks, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(tasks, "run_full_analysis", lambda db: [])
+    monkeypatch.setattr(tasks, "ingest_onionoo", lambda limit: None)
+    monkeypatch.setattr(tasks, "ingest_hibp", lambda limit: None)
+
+    def _boom(limit, indicator_limit):
+        raise RuntimeError("feed unreachable")
+
+    monkeypatch.setattr(tasks, "ingest_misp_osint", _boom)
+
+    result = tasks.run_scheduled_collection.apply()
+    assert result.result == {
+        "sources": {"onionoo": "ok", "misp_osint": "failed: feed unreachable", "hibp": "ok"},
+        "actor_count": 0,
+    }
+
+    db = SessionLocal()
+    job = db.query(AnalysisJob).one()
+    db.close()
+
+    assert job.job_type == "scheduled_collection"
+    assert job.status == "success"
+    assert job.result["sources"]["misp_osint"].startswith("failed:")
+    assert job.result["sources"]["onionoo"] == "ok"
+
+
+def test_scheduled_collection_persists_failure_job_when_pipeline_itself_fails(
+    tmp_path, monkeypatch
+):
+    SessionLocal = _session_factory(tmp_path)
+    monkeypatch.setattr(tasks, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(tasks, "ingest_onionoo", lambda limit: None)
+    monkeypatch.setattr(tasks, "ingest_misp_osint", lambda limit, indicator_limit: None)
+    monkeypatch.setattr(tasks, "ingest_hibp", lambda limit: None)
+
+    def _boom(db):
+        raise RuntimeError("simulated pipeline failure")
+
+    monkeypatch.setattr(tasks, "run_full_analysis", _boom)
+
+    result = tasks.run_scheduled_collection.apply()
+    assert result.failed()
+
+    db = SessionLocal()
+    job = db.query(AnalysisJob).one()
+    db.close()
+
+    assert job.job_type == "scheduled_collection"
+    assert job.status == "failure"
+    assert "simulated pipeline failure" in job.result["error"]

@@ -75,6 +75,23 @@ take real time. The API enqueues work to Celery and returns a job id
 immediately; the frontend polls job status. This keeps the API responsive and
 matches how a real production system would need to behave.
 
+## Autonomous collection loop
+
+`app/workers/tasks.py:run_scheduled_collection`, fired on a fixed interval
+by `celery -A app.workers.celery_app beat` (see `celery_app.py`'s
+`beat_schedule`, and the `beat` service in `docker-compose.prod.yml`),
+re-pulls the live public feeds Argus already knows how to ingest — Tor
+Onionoo, MISP OSINT, HIBP breach directory (the same `main()`s the manual
+`scripts/ingest_*.py` commands call) — then re-runs `run_full_analysis` so
+fresh correlation evidence surfaces without anyone manually re-triggering
+it. Each feed is independent and best-effort; one being unreachable doesn't
+stop the others or block the pipeline re-run. Every run leaves a real
+`AnalysisJob` row (`job_type="scheduled_collection"`), visible in the same
+Jobs & Scans view as manually-triggered runs. Not enabled in local dev
+(`docker-compose.yml` has no `beat` service) — a dev's machine shouldn't be
+silently polling real external APIs on a fixed schedule just because
+`docker compose up` was run.
+
 ## Why a relational store AND a graph store
 
 Postgres holds the canonical actor/identifier/finding records — the stuff the

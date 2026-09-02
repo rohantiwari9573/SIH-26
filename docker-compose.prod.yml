@@ -67,6 +67,24 @@ services:
       - redis
     restart: unless-stopped
 
+  # The autonomous collection loop itself (see
+  # app/workers/celery_app.py's beat_schedule and
+  # app/workers/tasks.py:run_scheduled_collection) — a scheduler process,
+  # separate from `worker` above, that enqueues the scheduled-collection task
+  # on its own fixed interval. Celery's own docs are explicit that only one
+  # beat instance should ever run against a given broker (two would each
+  # independently fire the same schedule, double-hitting the public feeds
+  # and double-running the pipeline) — a single `beat:` service here keeps
+  # that true by construction rather than by operational discipline.
+  beat:
+    build: .
+    env_file: .env
+    command: celery -A app.workers.celery_app beat --loglevel=info
+    depends_on:
+      - api
+      - redis
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   neo4j_data:

@@ -33,5 +33,14 @@ class Settings(BaseSettings):
     # change. The CLI --indicator-limit flag still overrides this per-run.
     misp_max_events: int = 10
 
+    # Hours between autonomous collection runs (celery beat, see
+    # app.workers.celery_app / app.workers.tasks.run_scheduled_collection).
+    # These are all low-churn public feeds (Tor relay list, MISP OSINT event
+    # manifests, HIBP breach directory) — every few hours is real freshness
+    # without hammering someone else's free public endpoint. A config value
+    # rather than a hardcoded constant so a demo/panel run can shorten it
+    # without a code change.
+    scheduled_collection_interval_hours: int = 6
+
 
 settings = Settings()
