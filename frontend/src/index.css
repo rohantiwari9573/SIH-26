@@ -1,62 +1,67 @@
 :root {
   color-scheme: dark;
 
-  /* Layered surfaces — depth via elevation, not just borders */
-  --bg: #0a0b0f;
-  --bg-gradient: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(99, 102, 241, 0.12), transparent);
-  --surface-1: #12131a;
-  --surface-2: #191b24;
-  --surface-3: #21232f;
-  --border: #24262f;
-  --border-hover: #3d4155;
+  /* Layered surfaces — depth via elevation, not just borders.
+     "Case File" palette: warm ink black (not blue-black), amber evidence-tag
+     accent — a deliberate departure from the generic indigo-on-navy look
+     most AI-built dashboards default to. See the Argus Style Concepts
+     artifact for the full rationale/comparison against 3 alternatives. */
+  --bg: #100e0c;
+  --bg-gradient: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(217, 154, 63, 0.09), transparent);
+  --surface-1: #1a1613;
+  --surface-2: #221c17;
+  --surface-3: #2b241b;
+  --border: #2e2820;
+  --border-hover: #4a3f2c;
 
-  /* Text */
-  --text: #f0f1f6;
-  --text-secondary: #a4a8b8;
-  --text-muted: #686d7e;
+  /* Text — warm off-white/ink, not cool gray */
+  --text: #ede7dc;
+  --text-secondary: #b3a893;
+  --text-muted: #7d735d;
 
-  /* Brand */
-  --accent: #7b8cff;
-  --accent-strong: #5f6fe6;
-  --accent-hover: #939fff;
-  --accent-muted: rgba(123, 140, 255, 0.13);
-  --accent-border: rgba(123, 140, 255, 0.35);
+  /* Brand — amber, the "evidence tag" color */
+  --accent: #d99a3f;
+  --accent-strong: #b97f2f;
+  --accent-hover: #e8b566;
+  --accent-muted: rgba(217, 154, 63, 0.14);
+  --accent-border: rgba(217, 154, 63, 0.38);
 
   /* Semantic */
-  --danger: #f87171;
-  --danger-muted: rgba(248, 113, 113, 0.12);
-  --danger-border: rgba(248, 113, 113, 0.3);
+  --danger: #c1503f;
+  --danger-muted: rgba(193, 80, 63, 0.13);
+  --danger-border: rgba(193, 80, 63, 0.32);
 
   /* Confidence tiers */
-  --high: #4ade80;
-  --high-muted: rgba(74, 222, 128, 0.13);
-  --high-border: rgba(74, 222, 128, 0.3);
-  --medium: #fbbf5a;
-  --medium-muted: rgba(251, 191, 90, 0.13);
-  --medium-border: rgba(251, 191, 90, 0.3);
-  --low: #8b90a0;
-  --low-muted: rgba(139, 144, 160, 0.12);
-  --low-border: rgba(139, 144, 160, 0.25);
+  --high: #8fae6d;
+  --high-muted: rgba(143, 174, 109, 0.14);
+  --high-border: rgba(143, 174, 109, 0.32);
+  --medium: #d9a34d;
+  --medium-muted: rgba(217, 163, 77, 0.14);
+  --medium-border: rgba(217, 163, 77, 0.32);
+  --low: #8a8065;
+  --low-muted: rgba(138, 128, 101, 0.13);
+  --low-border: rgba(138, 128, 101, 0.28);
 
   /* Identifier-type accents (used in graph + tables) */
-  --type-username: #7b8cff;
-  --type-wallet: #fbbf5a;
-  --type-pgp_key: #4ade80;
-  --type-onion_address: #f87171;
+  --type-username: #d99a3f;
+  --type-wallet: #c17a4a;
+  --type-pgp_key: #8fae6d;
+  --type-onion_address: #c1503f;
 
   /* Elevation */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 1px rgba(0, 0, 0, 0.24);
-  --shadow-md: 0 6px 16px -4px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 20px 48px -12px rgba(0, 0, 0, 0.6), 0 4px 12px rgba(0, 0, 0, 0.35);
-  --shadow-glow: 0 0 0 1px var(--accent-border), 0 8px 24px -8px rgba(123, 140, 255, 0.35);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 1px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 6px 16px -4px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 20px 48px -12px rgba(0, 0, 0, 0.7), 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-glow: 0 0 0 1px var(--accent-border), 0 8px 24px -8px rgba(217, 154, 63, 0.35);
 
-  /* Scale */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 18px;
+  /* Scale — smaller, squarer radii than a typical rounded-lg SaaS
+     dashboard; reads closer to an index card than a phone app. */
+  --radius-sm: 6px;
+  --radius-md: 9px;
+  --radius-lg: 13px;
   --radius-pill: 999px;
 
-  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: "Work Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-feature-settings: "cv11", "ss01";
   -webkit-font-smoothing: antialiased;
 }
@@ -76,14 +81,16 @@ body {
   background: var(--bg-gradient), var(--bg);
   background-attachment: fixed;
   color: var(--text);
-  letter-spacing: -0.011em;
+  letter-spacing: 0;
 }
 
 h1,
 h2,
 h3 {
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-family: "Fraunces", Georgia, "Times New Roman", serif;
+  font-optical-sizing: auto;
+  font-weight: 600;
+  letter-spacing: -0.005em;
   margin: 0;
 }
 
@@ -121,7 +128,7 @@ header {
   align-items: center;
   padding: 1.1rem 1.5rem;
   margin: 0 -1.5rem 2rem;
-  background: rgba(10, 11, 15, 0.75);
+  background: rgba(16, 14, 12, 0.75);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--border);
@@ -435,7 +442,7 @@ header {
   width: 34px;
   height: 34px;
   border-radius: 10px;
-  background: linear-gradient(135deg, var(--accent), #5548e6);
+  background: linear-gradient(135deg, var(--accent-hover), var(--accent-strong));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -485,7 +492,7 @@ button {
 button.btn-primary,
 button:not([class*="btn-"]):not(.link-button):not(.sidebar-item) {
   background: linear-gradient(180deg, var(--accent-hover), var(--accent-strong));
-  color: #0a0b14;
+  color: #100e0c;
   box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 
@@ -1144,7 +1151,7 @@ select:focus-visible {
   display: flex;
   align-items: center;
   padding: 4rem;
-  background: radial-gradient(ellipse 70% 60% at 20% 10%, rgba(99, 102, 241, 0.14), transparent),
+  background: radial-gradient(ellipse 70% 60% at 20% 10%, rgba(217, 154, 63, 0.14), transparent),
     var(--surface-1);
   border-right: 1px solid var(--border);
 }
@@ -1225,7 +1232,7 @@ select:focus-visible {
   align-items: flex-start;
   gap: 0.85rem;
   padding: 0.8rem 0.95rem;
-  background: rgba(18, 19, 26, 0.55);
+  background: rgba(26, 22, 19, 0.55);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   backdrop-filter: blur(6px);
