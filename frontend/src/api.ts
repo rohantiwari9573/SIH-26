@@ -473,11 +473,13 @@ export async function triggerInfraScan(payload: InfraScanRequest): Promise<{ tas
 }
 
 /** Polls a job until it reaches a terminal state (SUCCESS/FAILURE) or the
- * attempt budget runs out. Analysis is normally fast on this dataset size,
- * but there's no guarantee — bail out rather than poll forever. */
+ * attempt budget runs out. run_full_analysis reruns over the whole actor
+ * set (not just the submitted lead), so its runtime scales with dataset
+ * size — observed ~40-70s in production at ~275 actors. Budget generously
+ * above that rather than poll forever. */
 export async function waitForJob(
   taskId: string,
-  { intervalMs = 1000, maxAttempts = 30 }: { intervalMs?: number; maxAttempts?: number } = {}
+  { intervalMs = 1000, maxAttempts = 120 }: { intervalMs?: number; maxAttempts?: number } = {}
 ): Promise<JobStatus> {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const status = await getJobStatus(taskId);
