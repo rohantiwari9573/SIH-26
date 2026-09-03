@@ -1,7 +1,7 @@
 import csv
 import io
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -31,6 +31,21 @@ SYNTHETIC_PLATFORMS = {
 
 
 _FORMULA_TRIGGER_CHARS = ("=", "+", "-", "@", "\t", "\r")
+
+# Fixed offset rather than zoneinfo("Asia/Kolkata") — avoids depending on
+# the container image having the IANA tzdata package installed, and IST has
+# no DST to get wrong.
+_IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def _format_ist_and_utc(dt: datetime) -> str:
+    """Report timestamps in IST first (the team generating/reading these
+    reports is India-based) with UTC alongside for anyone cross-referencing
+    logs or coordinating with a non-IST team."""
+    aware = dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    ist = aware.astimezone(_IST).strftime("%Y-%m-%d %H:%M IST")
+    utc = aware.astimezone(timezone.utc).strftime("%H:%M UTC")
+    return f"{ist} ({utc})"
 
 
 def _csv_safe(value) -> str:
@@ -232,7 +247,7 @@ def export_report(actor_id: uuid.UUID, db: Session = Depends(get_db)):
     pdf.drawString(50, y, "Threat Actor Investigation Report")
     y -= 20
     pdf.setFont("Helvetica-Oblique", 9)
-    generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    generated = _format_ist_and_utc(datetime.now(timezone.utc))
     pdf.drawString(50, y, f"Generated: {generated}")
     y -= 25
 
@@ -255,7 +270,7 @@ def export_report(actor_id: uuid.UUID, db: Session = Depends(get_db)):
         font=("Helvetica-Bold", 12),
     )
     y = _draw_line(
-        pdf, 50, y, height, f"Last observed: {actor.updated_at.strftime('%Y-%m-%d %H:%M UTC')}"
+        pdf, 50, y, height, f"Last observed: {_format_ist_and_utc(actor.updated_at)}"
     )
     y -= 15
 
