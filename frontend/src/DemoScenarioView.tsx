@@ -108,9 +108,11 @@ export default function DemoScenarioView({
       await waitForJob(leadB1.task_id);
       setStepStatus(2, "done");
 
+      // Captured now (this is genuinely the pre-merge state) but not shown
+      // yet — setting it here would render the Before panel while the merge
+      // below is still running, making it look like a separate, premature
+      // result instead of one half of a single before/after comparison.
       const [bA, bB] = await Promise.all([lookupOne(USERNAME_A), lookupOne(USERNAME_B)]);
-      setBeforeA(bA);
-      setBeforeB(bB);
 
       // New evidence: demo_actor_beta now shares demo_actor_alpha's wallet.
       setStepStatus(3, "active");
@@ -126,6 +128,9 @@ export default function DemoScenarioView({
       setStepStatus(5, "active");
 
       const [aA, aB] = await Promise.all([lookupOne(USERNAME_A), lookupOne(USERNAME_B)]);
+      // Before and After go into state together so they render together.
+      setBeforeA(bA);
+      setBeforeB(bB);
       setAfterA(aA);
       setAfterB(aB);
       setStepStatus(5, "done");
