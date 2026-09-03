@@ -22,6 +22,14 @@ export function EyeIcon(props: IconProps) {
   );
 }
 
+export function CheckIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
+
 export function SearchIcon(props: IconProps) {
   return (
     <svg {...base} {...props}>

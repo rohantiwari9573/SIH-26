@@ -23,6 +23,7 @@ import {
   ActivityIcon,
   AlertIcon,
   ArrowLeftIcon,
+  CheckIcon,
   ClockIcon,
   DownloadIcon,
   FlagIcon,
@@ -100,7 +101,19 @@ export default function ActorProfileView({
   const [error, setError] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
+  // Shown briefly after a successful export — csv/json resolve in well
+  // under a second, so without this the button's loading spinner flashes
+  // and reverts before it registers, and the (real, successful) download
+  // looks like nothing happened.
+  const [downloaded, setDownloaded] = useState<string | null>(null);
+  const downloadedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [retryToken, setRetryToken] = useState(0);
+
+  useEffect(() => {
+    return () => {
+      if (downloadedTimer.current) clearTimeout(downloadedTimer.current);
+    };
+  }, []);
 
   useEffect(() => {
     setError(null);
@@ -212,6 +225,9 @@ export default function ActorProfileView({
     setExporting(format);
     try {
       await downloadExport(actorId, format);
+      if (downloadedTimer.current) clearTimeout(downloadedTimer.current);
+      setDownloaded(format);
+      downloadedTimer.current = setTimeout(() => setDownloaded(null), 1800);
     } catch (err) {
       setExportError(err instanceof ApiError ? err.message : "Export failed");
     } finally {
@@ -350,10 +366,16 @@ export default function ActorProfileView({
           >
             {exporting === format ? (
               <LoaderIcon width={15} height={15} />
+            ) : downloaded === format ? (
+              <CheckIcon width={15} height={15} />
             ) : (
               <DownloadIcon width={15} height={15} />
             )}
-            {exporting === format ? "Exporting..." : `Export ${format.toUpperCase()}`}
+            {exporting === format
+              ? "Exporting..."
+              : downloaded === format
+              ? "Downloaded"
+              : `Export ${format.toUpperCase()}`}
           </button>
         ))}
       </div>

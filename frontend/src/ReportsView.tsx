@@ -1,8 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActorSearchResult, ApiError, downloadExport, listActors } from "./api";
 import ConfidenceBadge from "./ConfidenceBadge";
 import { SkeletonRows } from "./Skeleton";
-import { AlertIcon, ClipboardIcon, DownloadIcon, LoaderIcon } from "./icons";
+import { AlertIcon, CheckIcon, ClipboardIcon, DownloadIcon, LoaderIcon } from "./icons";
+
+// How long the "Downloaded" checkmark stays up before a button reverts to
+// its normal label. The export itself often resolves in well under a
+// second (csv/json are just DB rows), so without this the loading spinner
+// flashes and disappears too fast to register — the download happens
+// silently in the background and it looks like the button did nothing.
+const DOWNLOADED_FLASH_MS = 1800;
 
 // PS-26151 "analytical output / export" requirement. Purely a UI around
 // Argus's existing export pipeline (GET /api/export/{id}/csv|json|report) —
@@ -12,8 +19,16 @@ export default function ReportsView({ onSelectActor }: { onSelectActor: (id: str
   const [error, setError] = useState<string | null>(null);
   const [retryToken, setRetryToken] = useState(0);
   const [exporting, setExporting] = useState<string | null>(null); // `${actorId}:${format}`
+  const [downloaded, setDownloaded] = useState<string | null>(null); // `${actorId}:${format}`
   const [exportError, setExportError] = useState<string | null>(null);
   const [selectedActorId, setSelectedActorId] = useState<string>("");
+  const downloadedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (downloadedTimer.current) clearTimeout(downloadedTimer.current);
+    };
+  }, []);
 
   useEffect(() => {
     setError(null);
@@ -28,6 +43,9 @@ export default function ReportsView({ onSelectActor }: { onSelectActor: (id: str
     setExporting(key);
     try {
       await downloadExport(actorId, format);
+      if (downloadedTimer.current) clearTimeout(downloadedTimer.current);
+      setDownloaded(key);
+      downloadedTimer.current = setTimeout(() => setDownloaded(null), DOWNLOADED_FLASH_MS);
     } catch (err) {
       setExportError(err instanceof ApiError ? err.message : "Export failed");
     } finally {
@@ -87,10 +105,12 @@ export default function ReportsView({ onSelectActor }: { onSelectActor: (id: str
               >
                 {exporting === `${selectedActorId}:report` ? (
                   <LoaderIcon width={15} height={15} />
+                ) : downloaded === `${selectedActorId}:report` ? (
+                  <CheckIcon width={15} height={15} />
                 ) : (
                   <DownloadIcon width={15} height={15} />
                 )}
-                Generate PDF Report
+                {downloaded === `${selectedActorId}:report` ? "Downloaded" : "Generate PDF Report"}
               </button>
             </div>
           </div>
@@ -134,21 +154,26 @@ export default function ReportsView({ onSelectActor }: { onSelectActor: (id: str
                       <td>{new Date(a.updated_at).toLocaleString()}</td>
                       <td>
                         <div style={{ display: "flex", gap: "0.4rem" }}>
-                          {(["csv", "json", "report"] as const).map((format) => (
-                            <button
-                              key={format}
-                              className="btn-ghost"
-                              style={{ padding: "0.3rem 0.55rem", fontSize: "0.78rem" }}
-                              disabled={exporting !== null}
-                              onClick={() => handleExport(a.id, format)}
-                            >
-                              {exporting === `${a.id}:${format}` ? (
-                                <LoaderIcon width={13} height={13} />
-                              ) : (
-                                format.toUpperCase()
-                              )}
-                            </button>
-                          ))}
+                          {(["csv", "json", "report"] as const).map((format) => {
+                            const key = `${a.id}:${format}`;
+                            return (
+                              <button
+                                key={format}
+                                className="btn-ghost"
+                                style={{ padding: "0.3rem 0.55rem", fontSize: "0.78rem" }}
+                                disabled={exporting !== null}
+                                onClick={() => handleExport(a.id, format)}
+                              >
+                                {exporting === key ? (
+                                  <LoaderIcon width={13} height={13} />
+                                ) : downloaded === key ? (
+                                  <CheckIcon width={13} height={13} />
+                                ) : (
+                                  format.toUpperCase()
+                                )}
+                              </button>
+                            );
+                          })}
                         </div>
                       </td>
                     </tr>
