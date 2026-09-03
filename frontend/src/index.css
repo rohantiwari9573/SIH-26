@@ -32,9 +32,9 @@
   --danger-border: rgba(193, 80, 63, 0.32);
 
   /* Confidence tiers */
-  --high: #8fae6d;
-  --high-muted: rgba(143, 174, 109, 0.14);
-  --high-border: rgba(143, 174, 109, 0.32);
+  --high: #3f9a5c;
+  --high-muted: rgba(63, 154, 92, 0.16);
+  --high-border: rgba(63, 154, 92, 0.35);
   --medium: #d9a34d;
   --medium-muted: rgba(217, 163, 77, 0.14);
   --medium-border: rgba(217, 163, 77, 0.32);

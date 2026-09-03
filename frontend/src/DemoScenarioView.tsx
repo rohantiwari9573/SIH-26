@@ -85,6 +85,13 @@ export default function DemoScenarioView({
 
     try {
       // Baseline: both personas exist with DIFFERENT wallets — no shared identifier.
+      // Submitted sequentially, not in parallel: run_full_analysis rebuilds
+      // the derived actor/attribution tables from scratch on every run, so
+      // two overlapping runs would both be writing that rebuild against the
+      // same tables at once — a real correctness risk, not just a perf one.
+      // (Tried running them concurrently; it didn't even help — both runs
+      // just contend for the same DB/CPU and end up taking about as long
+      // as one sequential pair does anyway.)
       setStepStatus(0, "active");
       const leadA = await submitLead({ username: USERNAME_A, platform: DEMO_PLATFORM, wallet: WALLET_A });
       setStepStatus(0, "done");
