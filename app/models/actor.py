@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, String, UniqueConstraint
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -20,7 +20,12 @@ class Actor(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    label: Mapped[str] = mapped_column(String(255))
+    # Text, not String(255): the label is a "/"-joined list of every known
+    # alias in the cluster, and a real cluster can accumulate enough aliases
+    # to exceed 255 chars (e.g. a 23-alias cluster in the demo dataset) --
+    # that overflowed the old VARCHAR(255) and crashed the whole re-attribution
+    # run, since Actor rows are rebuilt from scratch on every submission.
+    label: Mapped[str] = mapped_column(Text)
     confidence_score: Mapped[float] = mapped_column(Float, default=0.0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(
