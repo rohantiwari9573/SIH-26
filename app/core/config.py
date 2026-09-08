@@ -42,5 +42,13 @@ class Settings(BaseSettings):
     # without a code change.
     scheduled_collection_interval_hours: int = 6
 
+    # Comma-separated browser origins allowed to call the API cross-origin.
+    # Needed because the deployed frontend calls the HTTPS API domain
+    # directly rather than through a same-origin server-side proxy, so the
+    # browser sends a real preflight the API must answer. No cookies are
+    # used (JWT is a Bearer header — see app/api/deps.py), so this doesn't
+    # need allow_credentials.
+    cors_allowed_origins: str = "https://argus-frontend-9j9yjstwf-rohans-projects-98f5ed53.vercel.app"
+
 
 settings = Settings()
