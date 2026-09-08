@@ -48,7 +48,10 @@ class Settings(BaseSettings):
     # browser sends a real preflight the API must answer. No cookies are
     # used (JWT is a Bearer header — see app/api/deps.py), so this doesn't
     # need allow_credentials.
-    cors_allowed_origins: str = "https://argus-frontend-9j9yjstwf-rohans-projects-98f5ed53.vercel.app"
+    cors_allowed_origins: str = (
+        "https://argus-frontend-dun.vercel.app,"
+        "https://argus-frontend-9j9yjstwf-rohans-projects-98f5ed53.vercel.app"
+    )
 
 
 settings = Settings()

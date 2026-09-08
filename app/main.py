@@ -18,7 +18,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in settings.cors_allowed_origins.split(",") if o.strip()],
-    allow_origin_regex=r"https://argus-frontend-[a-z0-9]+-rohans-projects-98f5ed53\.vercel\.app",
+    allow_origin_regex=r"https://argus-frontend(-[a-z0-9]+)?(-rohans-projects-98f5ed53)?\.vercel\.app",
     allow_methods=["*"],
     allow_headers=["*"],
 )
