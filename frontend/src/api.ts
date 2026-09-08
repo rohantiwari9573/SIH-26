@@ -1,5 +1,19 @@
 const TOKEN_STORAGE_KEY = "argus_token";
 
+// Vercel's rewrite proxy to an external (non-Vercel) HTTPS destination proved
+// unreliable in practice (intermittent ROUTER_EXTERNAL_TARGET_CONNECTION_ERROR
+// from Vercel's edge, even though the backend is independently reachable from
+// every other network path tested) -- calling the API domain directly is the
+// robust alternative. The backend's CORS middleware (see app/main.py) is
+// configured for this exact cross-origin call.
+//
+// Empty string in dev: local `npm run dev` keeps using Vite's own "/api"
+// proxy (see vite.config.ts), which targets a plain http://localhost:8000
+// with no TLS/CORS involved -- prefixing an absolute HTTPS origin there
+// would bypass that proxy and break local development.
+const API_BASE =
+  import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.PROD ? "https://api.rohantiwari.me" : "");
+
 export interface ActorSearchResult {
   id: string;
   label: string;
@@ -114,7 +128,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
-  const response = await fetch(path, { ...init, headers });
+  const response = await fetch(`${API_BASE}${path}`, { ...init, headers });
   if (!response.ok) {
     const message = await _extractErrorMessage(response);
     // A 401 on a request that DID carry a token means the token is
@@ -376,7 +390,7 @@ export async function downloadExport(
   const headers = new Headers();
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
-  const response = await fetch(`/api/export/${actorId}/${format}`, { headers });
+  const response = await fetch(`${API_BASE}/api/export/${actorId}/${format}`, { headers });
   if (!response.ok) {
     const message = await _extractErrorMessage(response);
     if (response.status === 401 && token) {
