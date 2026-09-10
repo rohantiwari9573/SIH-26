@@ -11,6 +11,10 @@ venv/
 htmlcov/
 node_modules/
 dist/
+# The SIH submission deck is a deliverable, not a routine build artifact --
+# tracked despite the blanket dist/ rule above (frontend/dist stays ignored).
+!presentation/dist/
+!presentation/dist/*.pptx
 build/
 *.tsbuildinfo
 .idea/
