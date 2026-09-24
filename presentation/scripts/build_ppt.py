@@ -22,6 +22,14 @@ LIVE_SS_DASH = str(ASSETS / "dashboard_crop_new.jpg")
 ACTOR_SS_RATIO = 1190 / 620
 DASH_SS_RATIO = 1260 / 230
 
+# The official template's own "Oval N" shape on every content slide holds
+# placeholder text "Your Team Name" at this exact top-left spot -- it's a
+# real, intentional part of the template, not decoration. We replace it
+# with our own styled badge carrying the actual team name/ID rather than
+# just deleting it.
+TEAM_NAME = "Nexus2.O"
+TEAM_ID = "164739"
+
 # ---------------- palette (sampled from the reference mockup) ----------------
 HDR_PURPLE = RGBColor(0x6E, 0x5A, 0x98)
 DEEP_PURPLE = RGBColor(0x42, 0x2F, 0x6C)
@@ -98,10 +106,13 @@ def clear_default_chrome(slide):
                 shape.text_frame.clear()
 
 
-def corner_deco_tl(slide, d=2.6):
+def corner_deco_tl(slide, d=1.9):
     """A clean quarter-circle in the top-left corner: a full circle centred
     exactly on the slide's (0,0) point, so only one quarter is ever visible.
-    Far more reliable across renderers than MSO_SHAPE.PIE adjustments."""
+    Far more reliable across renderers than MSO_SHAPE.PIE adjustments.
+    Sized to 1.9in (down from an earlier 2.6in) specifically so it clears
+    both the header bar and the title row, leaving room for team_badge()
+    to sit in the corner without colliding with either."""
     dd = Inches(d)
     c = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(-d / 2), Inches(-d / 2), dd, dd)
     c.fill.solid(); c.fill.fore_color.rgb = DEEP_PURPLE
@@ -109,11 +120,30 @@ def corner_deco_tl(slide, d=2.6):
     return c
 
 
+def team_badge(slide):
+    """Fills the official template's own top-left 'Your Team Name' slot
+    (an Oval shape at this exact position on every content slide) with a
+    real, readable badge instead of the template's unstyled placeholder
+    text -- sits just left of the header bar, inside the corner circle."""
+    b = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.1), Inches(0.32), Inches(1.32), Inches(0.36))
+    b.fill.solid(); b.fill.fore_color.rgb = WHITE
+    b.line.color.rgb = WHITE; b.line.width = Pt(1)
+    b.shadow.inherit = False
+    tf = b.text_frame; tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    tf.margin_left = Inches(0.06); tf.margin_right = Inches(0.06)
+    tf.margin_top = 0; tf.margin_bottom = 0
+    p = tf.paragraphs[0]; p.alignment = PP_ALIGN.CENTER
+    r = p.add_run(); r.text = TEAM_NAME
+    r.font.size = Pt(12); r.font.bold = True; r.font.color.rgb = DEEP_PURPLE; r.font.name = "Arial"
+    return b
+
+
 def header_bar(slide, title_text):
     """Purple quarter-circle corner + 'SMART INDIA HACKATHON 2026' bar,
     matching the reference mockup's own chrome (replaces the official
     template's default title placeholder look for these content slides)."""
     corner_deco_tl(slide)
+    team_badge(slide)
 
     bar = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(1.55), Inches(0.22), Inches(5.6), Inches(0.5))
     bar.fill.solid(); bar.fill.fore_color.rgb = HDR_PURPLE
@@ -290,6 +320,7 @@ clear_default_chrome(s1)
 # (header_bar()'s bar), so the recurring SIH chrome is pixel-identical
 # across all 6 slides rather than just "close."
 corner_deco_tl(s1)
+team_badge(s1)
 
 bar = s1.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(1.55), Inches(0.22), Inches(5.6), Inches(0.5))
 bar.fill.solid(); bar.fill.fore_color.rgb = HDR_PURPLE
