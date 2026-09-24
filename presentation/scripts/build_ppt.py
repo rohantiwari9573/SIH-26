@@ -15,8 +15,12 @@ DIST.mkdir(exist_ok=True)
 
 SRC = str(ASSETS / "SIH2026-IDEA-Presentation-Format.pptx")
 OUT = str(DIST / "Argus_SIH2026_Idea_Submission.pptx")
-LIVE_SS_ACTOR = str(ASSETS / "actor_profile_crop.jpg")
-LIVE_SS_DASH = str(ASSETS / "dashboard_crop3.jpg")
+LIVE_SS_ACTOR = str(ASSETS / "actor_profile_new.jpg")
+LIVE_SS_DASH = str(ASSETS / "dashboard_crop_new.jpg")
+# Real pixel dimensions of the two screenshots above -- used everywhere a
+# picture is sized proportionally, so a re-crop only needs updating here.
+ACTOR_SS_RATIO = 1190 / 620
+DASH_SS_RATIO = 1260 / 230
 
 # ---------------- palette (sampled from the reference mockup) ----------------
 HDR_PURPLE = RGBColor(0x6E, 0x5A, 0x98)
@@ -322,7 +326,7 @@ meta_items = [
     ("PS ID", "26151"),
     ("THEME", "Blockchain & Cybersecurity"),
     ("ORGANIZATION", "NTRO"),
-    ("TEAM", "Team Nexus  •  T141"),
+    ("TEAM", "Nexus2.O  •  164739"),
 ]
 mg_left = Inches(0.55); mg_top = Inches(4.35)
 mg_w = Inches(3.5); mg_h = Inches(0.85); mg_gap = Inches(0.18)
@@ -409,10 +413,10 @@ ui_w = Inches(3.68)
 section_header_bar(s2, ui_left, fc_top, ui_w, Inches(0.42), "Unified Intelligence", NAVY_CARD)
 ui_body = card(s2, ui_left, fc_top + Inches(0.42), ui_w, fc_h - Inches(0.42), fill=WHITE, line_color=RGBColor(0xE3, 0xE3, 0xEE))
 ss_h = Inches(1.15)
-ss_w = ss_h * (1254 / 400)
+ss_w = ss_h * DASH_SS_RATIO
 if ss_w > ui_w - Inches(0.2):
     ss_w = ui_w - Inches(0.2)
-    ss_h = ss_w * (400 / 1254)
+    ss_h = ss_w / DASH_SS_RATIO
 ss_pic = s2.shapes.add_picture(LIVE_SS_DASH, ui_left + (ui_w - ss_w) / 2, fc_top + Inches(0.58), ss_w, ss_h)
 ss_pic.line.color.rgb = GREY; ss_pic.line.width = Pt(0.75)
 ui_items = [
@@ -547,10 +551,10 @@ evid_hdr.text_frame.paragraphs[0].runs[0].font.color.rgb = TITLE_INK
 evid_body_h = Inches(2.1)
 evid_body = card(s4, evid_left, ch_top + Inches(0.38), evid_w, evid_body_h, fill=RGBColor(0x1A, 0x1A, 0x22))
 ss4_h = Inches(1.65)
-ss4_w = ss4_h * (1140 / 500)
+ss4_w = ss4_h * ACTOR_SS_RATIO
 if ss4_w > evid_w - Inches(0.2):
     ss4_w = evid_w - Inches(0.2)
-    ss4_h = ss4_w * (500 / 1140)
+    ss4_h = ss4_w / ACTOR_SS_RATIO
 s4.shapes.add_picture(LIVE_SS_ACTOR, evid_left + (evid_w - ss4_w) / 2, ch_top + Inches(0.38) + (evid_body_h - ss4_h) / 2, ss4_w, ss4_h)
 
 why_top = rt + Inches(0.15)
@@ -688,10 +692,10 @@ dash_body_top = flow_top + Inches(0.4)
 dash_body_h = Inches(6.6) - dash_body_top
 dash_body = card(s6, dash_left, dash_body_top, dash_w, dash_body_h, fill=RGBColor(0x1A, 0x1A, 0x22))
 hero_h = dash_body_h - Inches(0.2)
-hero_w = hero_h * (1254 / 400)
+hero_w = hero_h * DASH_SS_RATIO
 if hero_w > dash_w - Inches(0.2):
     hero_w = dash_w - Inches(0.2)
-    hero_h = hero_w * (400 / 1254)
+    hero_h = hero_w / DASH_SS_RATIO
 hero_left = dash_left + (dash_w - hero_w) / 2
 hero_top = dash_body_top + (dash_body_h - hero_h) / 2
 s6.shapes.add_picture(LIVE_SS_DASH, hero_left, hero_top, hero_w, hero_h)
