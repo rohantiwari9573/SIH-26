@@ -15,6 +15,8 @@ dist/
 # tracked despite the blanket dist/ rule above (frontend/dist stays ignored).
 !presentation/dist/
 !presentation/dist/*.pptx
+!presentation/ps26035/dist/
+!presentation/ps26035/dist/*.pptx
 build/
 *.tsbuildinfo
 .idea/
