@@ -16,7 +16,7 @@ category assigned.
 ## Live demo
 
 - **Dashboard**: https://argus-frontend-dun.vercel.app/
-- **API**: https://api.rohantiwari.me/docs
+- **API**: https://argus-api-d6s7.onrender.com/docs
 
 Deployed on Vercel (frontend, auto-deploys on push to `master`) and AWS EC2
 (backend — FastAPI, Postgres, Neo4j, Redis, Celery worker + beat, behind

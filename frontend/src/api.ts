@@ -12,7 +12,7 @@ const TOKEN_STORAGE_KEY = "argus_token";
 // with no TLS/CORS involved -- prefixing an absolute HTTPS origin there
 // would bypass that proxy and break local development.
 const API_BASE =
-  import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.PROD ? "https://api.rohantiwari.me" : "");
+  import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.PROD ? "https://argus-api-d6s7.onrender.com" : "");
 
 export interface ActorSearchResult {
   id: string;

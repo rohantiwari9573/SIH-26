@@ -1,6 +1,6 @@
 {
   "rewrites": [
-    { "source": "/api/:path*", "destination": "https://api.rohantiwari.me/api/:path*" },
+    { "source": "/api/:path*", "destination": "https://argus-api-d6s7.onrender.com/api/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
