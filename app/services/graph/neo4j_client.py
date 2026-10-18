@@ -22,6 +22,16 @@ class Neo4jClient:
         with self._driver.session() as session:
             session.run("MATCH (n:Identifier) DETACH DELETE n")
 
+    def write_heartbeat(self) -> None:
+        """Aura Free pauses an instance after 3 days without a WRITE (reads
+        don't count). One MERGE on a single dedicated node resets that timer.
+        The node's Heartbeat label keeps it out of every Identifier query and
+        out of clear_all's DETACH DELETE."""
+        with self._driver.session() as session:
+            session.run(
+                "MERGE (h:Heartbeat {id: 'aura-keepalive'}) SET h.lastPing = datetime()"
+            ).consume()
+
     def upsert_identifier(self, identifier_type: str, value: str, source_platform: str):
         """Usernames are platform-scoped handles that can coincidentally
         collide across different marketplaces for different real people, so

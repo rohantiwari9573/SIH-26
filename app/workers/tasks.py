@@ -4,10 +4,14 @@ returns a job id; the dashboard polls /api/jobs/{id} for status."""
 import uuid
 from datetime import datetime, timezone
 
+from celery.signals import worker_ready
+from celery.utils.log import get_task_logger
+
 from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models.actor import AnalysisJob, InfraFinding
 from app.services.entity_linkage import derive_real_world_entities
+from app.services.graph.neo4j_client import get_neo4j_client
 from app.services.infra_scan.scanner import scan_target
 from app.services.pipeline import run_full_analysis
 from app.services.stylometry.classifier import similarity_score
@@ -34,9 +38,36 @@ from scripts.ingest_hibp import main as ingest_hibp
 from scripts.ingest_misp_osint import main as ingest_misp_osint
 from scripts.ingest_onionoo import main as ingest_onionoo
 
+logger = get_task_logger(__name__)
+
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+@celery_app.task(name="tasks.neo4j_keepalive")
+def neo4j_keepalive() -> bool:
+    """Daily (celery beat, see celery_app.py) WRITE to Neo4j so Aura Free
+    never hits its 3-days-without-a-write auto-pause. Never raises: a
+    network blip just logs and waits for the next run (any one success
+    within 3 days is enough), rather than failing the worker or retrying
+    in a tight loop."""
+    try:
+        get_neo4j_client().write_heartbeat()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Neo4j keepalive write failed: %s", exc)
+        return False
+    logger.info("Neo4j keepalive write succeeded")
+    return True
+
+
+@worker_ready.connect
+def _neo4j_keepalive_on_start(sender, **kwargs) -> None:
+    # Beat's 24h timer restarts from zero whenever the process restarts, and
+    # Render's free tier recycles this container far more often than daily
+    # (spin-down on idle, every redeploy), so the beat entry alone could
+    # never fire. Also writing once per worker start covers that gap.
+    sender.app.send_task("tasks.neo4j_keepalive")
 
 
 @celery_app.task(name="tasks.run_infra_scan", bind=True)

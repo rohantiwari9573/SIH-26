@@ -26,5 +26,11 @@ celery_app.conf.beat_schedule = {
     "scheduled-collection": {
         "task": "tasks.run_scheduled_collection",
         "schedule": timedelta(hours=settings.scheduled_collection_interval_hours),
-    }
+    },
+    # Keeps Neo4j Aura Free from auto-pausing (it pauses after 3 days with
+    # no write) — see app.workers.tasks.neo4j_keepalive.
+    "neo4j-keepalive": {
+        "task": "tasks.neo4j_keepalive",
+        "schedule": timedelta(hours=24),
+    },
 }
