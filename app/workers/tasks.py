@@ -1,6 +1,7 @@
 """Async analysis jobs. Analysis (stylometry over many samples, infra scans,
 graph traversal) shouldn't block the HTTP request — the API enqueues a job and
 returns a job id; the dashboard polls /api/jobs/{id} for status."""
+import threading
 import uuid
 from datetime import datetime, timezone
 
@@ -67,7 +68,11 @@ def _neo4j_keepalive_on_start(sender, **kwargs) -> None:
     # Render's free tier recycles this container far more often than daily
     # (spin-down on idle, every redeploy), so the beat entry alone could
     # never fire. Also writing once per worker start covers that gap.
-    sender.app.send_task("tasks.neo4j_keepalive")
+    # Run in-process (a daemon thread, so consumer startup isn't blocked)
+    # rather than via send_task: during a deploy the old container's worker
+    # is still consuming the same queue and would grab the message, and an
+    # old build doesn't have this task registered, so the write was lost.
+    threading.Thread(target=neo4j_keepalive, daemon=True).start()
 
 
 @celery_app.task(name="tasks.run_infra_scan", bind=True)
