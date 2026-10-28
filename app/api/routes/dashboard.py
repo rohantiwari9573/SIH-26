@@ -78,10 +78,12 @@ def _stat_card(label: str, total: int, recent_count: int, older_count: int) -> S
     existed before that window. A trend % is only meaningful once there's a
     real "before" baseline to compare against — with older_count == 0 (e.g.
     a freshly-seeded demo DB) any percentage would be either infinite or a
-    fabricated number, so it's left out entirely rather than shown as 0%."""
+    fabricated number, so it's left out entirely rather than shown as 0%.
+    The value is week-over-week growth: rows added in the window as a
+    percentage of the pre-window baseline (0.0 when nothing new arrived)."""
     trend_pct = None
     if older_count > 0:
-        trend_pct = round((recent_count / older_count) * 100 - 100, 1)
+        trend_pct = round((recent_count / older_count) * 100, 1)
     return StatCard(label=label, value=total, trend_pct=trend_pct)
 
 
