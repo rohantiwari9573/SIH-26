@@ -1,235 +1,170 @@
-# Argus — Dark Web Threat Actor De-anonymization
+<div align="center">
 
-A system that links dark-web personas to real-world identity/infrastructure using
-infrastructure fingerprinting, relationship-graph analysis, and stylometric
-behavioral analysis — and separately classifies each actor's own real activity
-content into a controlled threat-category taxonomy (credential theft, hacking
-services, stolen data, etc.), with full evidence and provenance for every
-category assigned.
+# Argus
 
-> **Ethics / legal notice**: This project never scrapes live dark-web marketplaces.
-> Real intelligence comes only from public OSINT feeds and already-published academic
-> research datasets (see **Real intelligence sources** below); the infrastructure-scan
-> pillar runs only against a self-hosted mock Tor hidden service the team controls.
-> See [docs/ETHICS.md](docs/ETHICS.md).
+**Dark-web threat actor de-anonymization and attribution.** Argus links pseudonymous personas across platforms using infrastructure fingerprints, a relationship graph and authorship stylometry, and shows the evidence behind every confidence score.
 
-## Live demo
+[![CI](https://github.com/rohantiwari9573/SIH-26/actions/workflows/ci.yml/badge.svg)](https://github.com/rohantiwari9573/SIH-26/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=flat-square&logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)
+![React](https://img.shields.io/badge/React_+_TypeScript-61DAFB?style=flat-square&logo=react&logoColor=black)
+![Neo4j](https://img.shields.io/badge/Neo4j-4581C3?style=flat-square&logo=neo4j&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white)
+![Celery](https://img.shields.io/badge/Celery-37814A?style=flat-square&logo=celery&logoColor=white)
 
-- **Dashboard**: https://argus-frontend-dun.vercel.app/
-- **API**: https://argus-api-d6s7.onrender.com/docs
+**[Live dashboard](https://argus-frontend-dun.vercel.app)** · **[API docs](https://argus-api-d6s7.onrender.com/docs)** · **[Architecture](docs/ARCHITECTURE.md)** · **[Ethics](docs/ETHICS.md)**
 
-Deployed on Vercel (frontend, auto-deploys on push to `master`) and AWS EC2
-(backend — FastAPI, Postgres, Neo4j, Redis, Celery worker + beat, behind
-Caddy/HTTPS). The sections below (Quickstart, `localhost:*`) are for running
-Argus on your own machine, not the deployed instance.
+<sub>Built for Smart India Hackathon 2026, problem statement SIH26151. Registration on the live demo is open. The API runs on a free tier, so the first request after an idle period can take up to a minute.</sub>
+
+</div>
+
+<br />
+
+<img src="docs/screenshots/dashboard.png" alt="Argus dashboard: actors, handles, PGP keys, wallets and attribution links" width="100%" />
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/actor-profile.png" alt="Actor profile with per-pillar attribution evidence" width="100%" /><p align="center"><sub>Each actor profile explains <i>why</i> personas were linked, broken down by evidence pillar</sub></p></td>
+<td width="50%"><img src="docs/screenshots/relationship-graph.png" alt="Neo4j-backed relationship graph" width="100%" /><p align="center"><sub>Neo4j relationship graph: handles linked through shared wallets and PGP keys</sub></p></td>
+</tr>
+</table>
+
+> **Ethics and legal.** Argus never scrapes live dark-web marketplaces. Real intelligence comes only from public OSINT feeds and published academic research datasets. Infrastructure scanning runs only against a self-hosted mock hidden service. See [docs/ETHICS.md](docs/ETHICS.md).
+
+---
+
+## What it does
+
+Argus runs two **independent** analytical pipelines and stores the results in one actor-profile store. A dashboard and REST API sit on top.
+
+**1. Attribution.** *Is this the same actor?*
+
+| Pillar | Module | Approach |
+|---|---|---|
+| Infrastructure analysis | `app/services/infra_scan` | TLS certificate inspection and banner grabbing to find leaks that tie a hidden service to clearnet infrastructure |
+| Relationship mapping | `app/services/graph` | Neo4j entity graph of usernames, PGP keys, wallets and trust links |
+| Behavioral stylometry | `app/services/stylometry` | Burrows' Delta authorship attribution, implemented from scratch |
+| Wallet clustering | `app/services/wallet_cluster` | Common-input-ownership heuristic |
+
+The pillar scores combine into a weighted confidence score (`app/services/scoring.py`), and every link keeps its evidence and provenance.
+
+**2. Threat categorization.** *What kind of activity is this actor involved in?*
+
+Each piece of real activity (a listing or a post) is classified into a controlled taxonomy such as credential theft, hacking services or stolen data. The source dataset's own category is used when it has one; otherwise conservative keyword rules apply. Categorization **never** feeds the attribution score, so the two answers can't contaminate each other.
+
+## Capabilities
+
+- **Actor search and profiles.** Look up any identifier and see linked personas, infrastructure findings, suspected real-world entities, an activity timeline and the per-pillar attribution evidence.
+- **Interactive relationship graph.** The Neo4j-backed graph supports depth, source and entity-type filters.
+- **Live lead submission.** Submit a new persona or identifier from the dashboard. A Celery job re-derives every actor cluster from all known data, and the UI polls the job until it finishes.
+- **Exports.** Any actor profile exports to CSV, JSON or a PDF report, including the evidence trail.
+- **Real intelligence ingestion.** Public OSINT feeds and academic datasets are ingested, and each record is labeled as a historical dataset, live feed or synthetic data.
+- **Graded confidence.** A stylometry-only match with no shared identifiers gets partial confidence instead of a yes/no answer. On the demo data, the true pair scores 0.94 against 0.62–0.87 for unrelated pairs.
+
+## Intelligence sources
+
+| Source | Script | Provides |
+|---|---|---|
+| Evolution Market/Forum dataset (Zenodo) | `ingest_evolution.py` | Historical marketplace listings and forum posts, with ground-truth cross-platform persona matches |
+| DarkForums dataset (Zenodo) | `ingest_darkforums.py` | Leak-forum threads and posts with source-provided categories |
+| Tor Onionoo (Tor Project) | `ingest_onionoo.py` | Live relay metadata |
+| MISP CIRCL + botvrij.eu OSINT feeds | `ingest_misp_osint.py` | Live threat-intel events and indicators |
+| Have I Been Pwned breach directory | `ingest_hibp.py` | Public breach metadata |
+| URLhaus · MalwareBazaar · Chainabuse | `ingest_urlhaus.py` · `ingest_malwarebazaar.py` · `ingest_chainabuse.py` | Live feeds (each needs an API key) |
+
+`app/services/correlation.py` cross-checks these sources against Argus's own infrastructure findings. The results are used as enrichment evidence only and are never fed into attribution confidence.
 
 ## Architecture
 
-Two SEPARATE analytical pipelines feed a unified actor-profile store, exposed
-through a query API and dashboard. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-for the diagram and data flow.
+```mermaid
+flowchart LR
+    UI["React + TypeScript<br/>dashboard (Vercel)"] -->|REST, JWT| API["FastAPI"]
+    API --> PG[("PostgreSQL<br/>actors, evidence,<br/>raw activity")]
+    API --> NEO[("Neo4j<br/>entity graph")]
+    API -->|enqueue| CEL["Celery worker + beat"]
+    CEL --> PG
+    CEL --> NEO
+    CEL --> RED[("Redis<br/>broker")]
+    API --> RED
+    SRC["OSINT feeds +<br/>research datasets"] --> ING["Ingestion scripts"] --> PG
+```
 
-**Attribution** — "is this the same actor?"
+The full data flow is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), and the stylometry design is in [docs/AI_STYLOMETRY.md](docs/AI_STYLOMETRY.md).
 
-| Pillar | Module | Tech |
-|---|---|---|
-| Infrastructure analysis | `app/services/infra_scan` | SSL/cert inspection, banner grabbing |
-| Relationship mapping | `app/services/graph` | Neo4j entity graph, visualized live in the dashboard |
-| Behavioral / stylometric analysis | `app/services/stylometry` | Burrows' Delta authorship attribution (hand-rolled, no ML framework) |
-| Wallet clustering | `app/services/wallet_cluster` | common-input-ownership heuristic |
+## Tech stack
 
-**Threat categorization** — "what kind of activity is this actor associated with?"
-Deliberately independent of attribution — see `app/services/threat_categorization.py`'s
-module docstring. Never feeds `app/services/scoring.py`'s confidence formula.
-
-| Stage | Module |
+| Layer | Technology |
 |---|---|
-| Real per-item activity ingestion (one row per listing/post) | `app/models/actor.RawActivity`, `scripts/ingest_evolution.py` / `ingest_darkforums.py` |
-| Classification (source-provided category, else conservative keyword rules) | `app/services/threat_categorization.py` |
-| Evidence storage + actor linkage | `app/models/actor.ThreatActivity`, rebuilt each `run_full_analysis` |
-| API | `GET /api/actors/{id}/threat-activity` |
-| UI | ActorProfileView's "Observed Threat Categories" section |
+| API | FastAPI, Pydantic, JWT auth |
+| Relational store | PostgreSQL, SQLAlchemy, Alembic |
+| Graph store | Neo4j |
+| Jobs | Celery + Redis (analysis runs asynchronously, never inline on the request) |
+| Frontend | React 18, TypeScript, Vite, served as a static build |
+| Quality | pytest (~140 tests), Ruff, GitHub Actions |
+| Hosting | Vercel · Render · Neon Postgres · Neo4j Aura · Render Key Value |
 
-## Real intelligence sources
-
-Beyond the synthetic/controlled demo data, Argus ingests real public
-intelligence via `scripts/ingest_*.py` — every source is honestly labeled
-(historical dataset / live feed / synthetic), never faked, and a 0-record
-source means genuinely not configured, not hidden:
-
-| Source | Script | What it provides |
-|---|---|---|
-| Evolution Market/Forum dataset (Zenodo) | `ingest_evolution.py` | Real historical marketplace listings + forum posts, real ground-truth cross-platform persona matches |
-| DarkForums dataset (Zenodo) | `ingest_darkforums.py` | Real leak-forum thread/post content with a real source-provided category ("Leaks") |
-| Tor Onionoo (Tor Project) | `ingest_onionoo.py` | Live relay metadata |
-| MISP CIRCL + botvrij.eu OSINT feeds | `ingest_misp_osint.py` | Live threat-intel events + indicators |
-| Have I Been Pwned breach directory | `ingest_hibp.py` | Public breach metadata |
-| URLhaus / MalwareBazaar / Chainabuse | `ingest_urlhaus.py` / `ingest_malwarebazaar.py` / `ingest_chainabuse.py` | Live feeds, require an API key each (0 records/`configured: false` until set) |
-
-`app/services/correlation.py` deterministically cross-checks these against
-Argus's own infrastructure findings (enrichment evidence only, never fed into
-attribution confidence); `app/services/threat_categorization.py` classifies
-the activity-bearing sources (Evolution, DarkForums) into the threat-category
-taxonomy described above.
-
-## Stack
-
-- **API**: FastAPI + Pydantic
-- **Relational store**: PostgreSQL (SQLAlchemy + Alembic migrations)
-- **Graph store**: Neo4j
-- **Job queue**: Celery + Redis (analysis jobs run async, not inline on the request)
-- **Frontend**: React + TypeScript (Vite dev server for development, static
-  build behind nginx for production — see `docker-compose.yml`'s `frontend`
-  vs. `frontend-prod` services)
-- **Auth**: JWT
-- **Tests**: pytest
-- **CI**: GitHub Actions (lint + test on every push)
-
-## Quickstart (local development)
+## Getting started
 
 ```bash
+git clone https://github.com/rohantiwari9573/SIH-26.git argus
+cd argus
 cp .env.example .env
 docker compose up --build
-```
-
-- Dashboard: http://localhost:5173
-- API: http://localhost:8000/docs
-- Neo4j browser: http://localhost:7474
-
-For a production-style static build (nginx-served, no Vite dev server, no
-source volume-mounted) instead of the hot-reload dev frontend:
-
-```bash
-docker compose --profile prod up --build frontend-prod
-```
-
-Dashboard then at http://localhost:5174 — separate port from the dev server
-on 5173, so both can run side by side. Not started by plain `docker compose
-up`; opt in with `--profile prod` when you want it (e.g. for the actual demo,
-where showing Vite's dev tooling in devtools looks less finished).
-
-Generate and run the initial migration (first time only):
-
-```bash
-docker compose exec api alembic revision --autogenerate -m "init"
 docker compose exec api alembic upgrade head
 ```
 
-After any model change, repeat the `revision --autogenerate` + `upgrade head` steps.
+| Service | URL |
+|---|---|
+| Dashboard | http://localhost:5173 |
+| API + Swagger UI | http://localhost:8000/docs |
+| Neo4j browser | http://localhost:7474 |
 
-Generate the synthetic demo dataset (safe to run, no real data):
-
-```bash
-python scripts/generate_synthetic_dataset.py
-```
-
-Sanity-check the attribution pipeline standalone, no DB needed (prints clusters
-+ confidence scores to stdout — good first check and a live-demo fallback if
-Docker isn't handy):
+**Load data and run the pipeline:**
 
 ```bash
-docker compose exec api python scripts/run_attribution_demo.py
-# or locally without Docker: PYTHONPATH=. python scripts/run_attribution_demo.py
+python scripts/generate_synthetic_dataset.py                 # safe synthetic demo data
+docker compose exec api python scripts/ingest_and_attribute.py   # derive attribution from raw, unlinked data
+docker compose exec api python scripts/ingest_evolution.py       # optional: real research datasets / OSINT feeds
 ```
 
-Run the full pipeline and persist results (Postgres + Neo4j required — this is
-the primary demo path, since it *derives* attribution from unlinked raw data
-rather than pre-linking the answer):
+To check the attribution pipeline without a database, run `PYTHONPATH=. python scripts/run_attribution_demo.py`. It prints the clusters and confidence scores to stdout.
 
-```bash
-docker compose exec api python scripts/ingest_and_attribute.py
-```
+To build a production-style static frontend served by nginx, run `docker compose --profile prod up --build frontend-prod`. It serves on port 5174.
 
-Or skip the CLI entirely and submit a lead through the dashboard itself
-("+ Submit lead") — same pipeline, runs async via Celery, polls job status,
-and re-derives every actor cluster from everything known so far.
-
-Ingest real intelligence sources (each is independent, safe to run in any
-order; see **Real intelligence sources** above for what each provides —
-Evolution/DarkForums also populate `RawActivity`/`ThreatActivity` and re-run
-the full pipeline automatically):
-
-```bash
-docker compose exec api python scripts/ingest_evolution.py
-docker compose exec api python scripts/ingest_darkforums.py
-docker compose exec api python scripts/ingest_onionoo.py
-docker compose exec api python scripts/ingest_misp_osint.py
-docker compose exec api python scripts/ingest_hibp.py
-```
-
-Run tests:
+## Testing
 
 ```bash
 docker compose exec api pytest
 ```
 
-## Requirement coverage checklist
+CI runs Ruff and the pytest suite with coverage on every push.
 
-Maps directly to the PS text — keep this current, it's your judge-facing proof of coverage.
-Everything below has been run against the **real `docker compose up` stack**
-(Postgres, Neo4j, Redis, Celery, the mock infra target, the API, and the
-dashboard) in this session — not simulated, not just unit-tested in isolation.
+## Deployment
 
-- [x] Infrastructure analysis: SSL leak / banner detection — ran from inside
-      the `api` container against the real `mock_target` container over the
-      real Docker network; both leaks detected correctly
-- [x] Relationship mapping: username / PGP key / wallet / trust-link graph —
-      verified by querying the real Neo4j container directly with Cypher after
-      running the pipeline; `shadow_vendor` and `nightowl_88` both correctly
-      linked through shared wallet/PGP nodes; **also rendered as an actual
-      graph in the dashboard** (`GET /api/actors/{id}/graph` + `GraphView.tsx`),
-      not just implied by a table — verified live in the browser
-- [x] Behavioral analysis: stylometric persona-migration detection — verified
-      with a real discrimination-margin check (true pair 0.94 vs. unrelated
-      pairs 0.62-0.87); a graded-confidence pair (stylometry-only match, no
-      shared identifiers) is included in the demo dataset so the UI can show
-      partial evidence, not just binary yes/no
-- [x] Database collection, storage, analysis pipeline — `scripts/ingest_and_attribute.py`
-      run against the real Postgres container via Alembic-migrated schema;
-      confirmed via direct SQL query and via the live API. **Also live at
-      runtime**, not just via CLI script: `POST /api/leads` accepts a new
-      persona, upserts it, and re-runs the full pipeline async via Celery
-      (`GET /api/jobs/{task_id}` for status) — verified live in the browser,
-      including watching an actor's confidence jump from 18% to 83% after
-      submitting a wallet link for one of its personas
-- [x] Query interface (search actor by identifier) — dashboard + API verified
-      end-to-end live in an actual browser against the containerized stack
-- [x] Actor profile view: identifiers, infra details, confidence metrics together —
-      verified live in the browser
-- [x] Export: CSV / JSON / report (PDF) — all three verified live: clicked each
-      button in the browser, confirmed the downloaded files' contents
-- [x] Category — `app/services/threat_categorization.py` + `ThreatActivity`
-      table; verified live against real re-ingested DarkForums data: 152 real
-      per-post activity records, all classified via the dataset's own
-      source-provided category field, all linked to the real actor and
-      visible with full evidence (source, matched text, reason, observed
-      date) in the ActorProfileView "Observed Threat Categories" section and
-      in all three export formats. Deliberately does NOT feed attribution
-      confidence — see `app/services/threat_categorization.py`'s module
-      docstring.
-
-No open gaps as of this session. If you change the pipeline or add data,
-re-run `docker compose exec api python scripts/ingest_and_attribute.py` and
-spot-check the dashboard before assuming it still holds.
+| Component | Host |
+|---|---|
+| Dashboard | Vercel (static build, `/api/*` rewritten to the API) |
+| API + Celery | One Render container. `scripts/render_start.sh` runs uvicorn with a single Celery worker and embedded beat |
+| PostgreSQL | Neon |
+| Graph | Neo4j Aura |
+| Broker | Render Key Value (Redis-compatible) |
 
 ## Project layout
 
-```
+```text
 app/
-  core/       config, security (JWT)
-  db/         SQLAlchemy session/base
-  models/     ORM models (actor.py: Argus's own derived data; external.py: real ingested intel)
-  schemas/    Pydantic request/response schemas
-  api/routes/ FastAPI routers (auth, actors, export, leads, jobs, health, dashboard)
-  services/   attribution pillars, correlation, threat categorization
-  workers/    Celery app + async analysis tasks
-alembic/            DB migrations
-tests/              unit + integration tests
-docs/               architecture + ethics docs
-scripts/            synthetic dataset generation, attribution pipeline runners,
-                     real-source ingestion (ingest_evolution.py, ingest_darkforums.py,
-                     ingest_onionoo.py, ingest_misp_osint.py, ingest_hibp.py, ...)
-frontend/           React + TypeScript dashboard (login, search, actor profile, exports)
-mock_leaky_service/ deliberately misconfigured target for the infra-scan pillar
-data/               generated synthetic dataset + extracted real-source data (data/external/)
+  api/routes/   auth, actors, export, leads, jobs, dashboard, health
+  services/     attribution pillars, scoring, correlation, threat categorization
+  models/       actor.py (derived data) · external.py (ingested intelligence)
+  workers/      Celery app and analysis tasks
+alembic/        database migrations
+frontend/       React + TypeScript dashboard
+scripts/        dataset generation, pipeline runners, source ingestion
+mock_leaky_service/  deliberately misconfigured target for the infra-scan pillar
+tests/          unit and integration tests
+docs/           architecture, stylometry, ethics
 ```
+
+## Author
+
+**Rohan Tiwari** · [GitHub](https://github.com/rohantiwari9573) · [LinkedIn](https://www.linkedin.com/in/rohan-tiwari-012106283/)
